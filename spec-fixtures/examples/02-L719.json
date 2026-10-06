@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "id": "e8",
+  "type": "fetch.chunk",
+  "body": {
+    "stream_id": "s1",
+    "index": 0,
+    "offset": 402653184,
+    "length": 12,
+    "data": "aGVsbG8td29ybGQh"
+  }
+}

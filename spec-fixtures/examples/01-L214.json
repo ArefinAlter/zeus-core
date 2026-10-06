@@ -1,0 +1,22 @@
+{
+  "probed_at": "2026-10-05T09:15:36.610Z",
+  "method": "range_get",
+  "transport": "direct",
+  "http_version": "h2",
+  "status": 206,
+  "final_url_redacted": "https://cdn.example.org/blobs/dataset-v3.tar.zst?…",
+  "redirects": 1,
+  "range_support": "verified",
+  "total_bytes": 1288490188,
+  "content_type": "application/zstd",
+  "content_encoding": null,
+  "filename": { "value": "dataset-v3.tar.zst", "source": "content_disposition" },
+  "validators": {
+    "etag": "\"5f3a9c-4c1d2e7b\"",
+    "last_modified": "Tue, 29 Sep 2026 14:02:11 GMT",
+    "last_modified_strong": true,
+    "repr_digest": null
+  },
+  "requires_session": true,
+  "interstitial_suspected": false
+}

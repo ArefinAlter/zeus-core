@@ -1,0 +1,6 @@
+# The minimum supported Rust version (1.90) is declared in Cargo.toml (`rust-version`) and checked in CI
+# on a pinned 1.90 job. Developers use whatever stable toolchain they have installed.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "id": "d2",
+  "re": "e2",
+  "type": "handoff.accept",
+  "body": {
+    "job_id": "job_01M45NHJ2AHWMXT8JVJ7BEEJX7",
+    "state": "awaiting_approval",
+    "approval_id": "ap_01M45NHJ3XS0QXG9T42HHN2YR8",
+    "deduplicated": false
+  }
+}

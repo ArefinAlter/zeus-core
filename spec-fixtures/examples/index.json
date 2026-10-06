@@ -1,0 +1,443 @@
+[
+  {
+    "file": "examples/00-L132.json",
+    "doc": "00-conventions.md",
+    "line": 132,
+    "schema": "common",
+    "def": "JobId",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/00-L252.json",
+    "doc": "00-conventions.md",
+    "line": 252,
+    "schema": "common",
+    "def": "ErrorEnvelope",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L49.json",
+    "doc": "01-domain-model.md",
+    "line": 49,
+    "schema": "domain",
+    "def": "Job",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L156.json",
+    "doc": "01-domain-model.md",
+    "line": 156,
+    "schema": "domain",
+    "def": "JobSpec",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L214.json",
+    "doc": "01-domain-model.md",
+    "line": 214,
+    "schema": "domain",
+    "def": "ProbeResult",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L250.json",
+    "doc": "01-domain-model.md",
+    "line": 250,
+    "schema": "domain",
+    "def": "Segment",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L270.json",
+    "doc": "01-domain-model.md",
+    "line": 270,
+    "schema": "domain",
+    "def": "Progress",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L332.json",
+    "doc": "01-domain-model.md",
+    "line": 332,
+    "schema": "domain",
+    "def": "SessionGrant",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L375.json",
+    "doc": "01-domain-model.md",
+    "line": 375,
+    "schema": "domain",
+    "def": "Approval",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L872.jsonl",
+    "doc": "01-domain-model.md",
+    "line": 872,
+    "schema": "domain",
+    "def": "Event",
+    "kind": "jsonl",
+    "chain": false
+  },
+  {
+    "file": "examples/01-L892.jsonl",
+    "doc": "01-domain-model.md",
+    "line": 892,
+    "schema": "domain",
+    "def": "Event",
+    "kind": "jsonl",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L62.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 62,
+    "schema": "native-messaging.v1",
+    "def": "HostManifestChrome",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L72.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 72,
+    "schema": "native-messaging.v1",
+    "def": "HostManifestFirefox",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L210.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 210,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L229.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 229,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L365.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 365,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L401.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 401,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L416.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 416,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L438.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 438,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L457.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 457,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L495.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 495,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L552.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 552,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L574.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 574,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L601.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 601,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L644.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 644,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L693.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 693,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L719.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 719,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L743.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 743,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L747.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 747,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L751.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 751,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L769.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 769,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L808.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 808,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L836.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 836,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L850.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 850,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L929.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 929,
+    "schema": "native-messaging.v1",
+    "def": "ExtensionToDaemonMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L948.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 948,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L960.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 960,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/02-L989.json",
+    "doc": "02-native-messaging-v1.md",
+    "line": 989,
+    "schema": "native-messaging.v1",
+    "def": "DaemonToExtensionMessage",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/03-L100.json",
+    "doc": "03-journal-and-commit-protocol.md",
+    "line": 100,
+    "schema": "journal.v1",
+    "def": "Meta",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/03-L119.json",
+    "doc": "03-journal-and-commit-protocol.md",
+    "line": 119,
+    "schema": "journal.v1",
+    "def": "JobRecord",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/03-L192.jsonl",
+    "doc": "03-journal-and-commit-protocol.md",
+    "line": 192,
+    "schema": "journal.v1",
+    "def": "RangeRow",
+    "kind": "jsonl",
+    "chain": false
+  },
+  {
+    "file": "examples/03-L198.json",
+    "doc": "03-journal-and-commit-protocol.md",
+    "line": 198,
+    "schema": "journal.v1",
+    "def": "UnitCrcRow",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/03-L202.json",
+    "doc": "03-journal-and-commit-protocol.md",
+    "line": 202,
+    "schema": "journal.v1",
+    "def": "InvalidationRow",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/03-L206.json",
+    "doc": "03-journal-and-commit-protocol.md",
+    "line": 206,
+    "schema": "journal.v1",
+    "def": "IdempotencyRow",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/03-L217.json",
+    "doc": "03-journal-and-commit-protocol.md",
+    "line": 217,
+    "schema": "journal.v1",
+    "def": "ReservationRow",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/04-L109.jsonl",
+    "doc": "04-audit-log-and-provenance.md",
+    "line": 109,
+    "schema": "provenance-manifest.v0",
+    "def": "ManifestLine",
+    "kind": "jsonl",
+    "chain": false
+  },
+  {
+    "file": "examples/04-L260.jsonl",
+    "doc": "04-audit-log-and-provenance.md",
+    "line": 260,
+    "schema": "audit-record.v1",
+    "def": "AuditRecord",
+    "kind": "jsonl",
+    "chain": true
+  },
+  {
+    "file": "examples/04-L381.json",
+    "doc": "04-audit-log-and-provenance.md",
+    "line": 381,
+    "schema": "export-mappings",
+    "def": "ProvJson",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/04-L461.json",
+    "doc": "04-audit-log-and-provenance.md",
+    "line": 461,
+    "schema": "export-mappings",
+    "def": "CroissantFileObject",
+    "kind": "json",
+    "chain": false
+  }
+]

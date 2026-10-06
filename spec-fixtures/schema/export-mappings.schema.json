@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeus.invalid/schema/export-mappings",
+  "title": "Zeus provenance export shapes",
+  "description": "Minimal shapes of the PROV-JSON and Croissant outputs of zeus_manifest_export (docs/spec/04-audit-log-and-provenance.md section 7). They check only the keys Zeus emits; they are not full PROV or Croissant validators.",
+  "$defs": {
+    "CroissantFileObject": {
+      "type": "object",
+      "required": ["@type", "@id", "name", "contentUrl", "encodingFormat", "sha256", "contentSize"],
+      "properties": {
+        "@type": { "const": "cr:FileObject" },
+        "@id": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "contentUrl": { "type": "string", "maxLength": 2048 },
+        "encodingFormat": { "type": "string", "maxLength": 255 },
+        "sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "contentSize": { "type": "string", "pattern": "^[0-9]+ B$" },
+        "containedIn": { "type": "object", "required": ["@id"], "properties": { "@id": { "type": "string" } } }
+      }
+    },
+    "ProvJson": {
+      "type": "object",
+      "required": ["prefix", "entity", "activity", "agent", "wasGeneratedBy", "used", "wasAssociatedWith"],
+      "properties": {
+        "prefix": {
+          "type": "object",
+          "required": ["prov", "zeus"],
+          "additionalProperties": { "type": "string" }
+        },
+        "entity": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "object" } },
+        "activity": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "object" } },
+        "agent": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "object" } },
+        "wasGeneratedBy": { "type": "object", "additionalProperties": { "type": "object", "required": ["prov:entity", "prov:activity"] } },
+        "used": { "type": "object", "additionalProperties": { "type": "object", "required": ["prov:activity", "prov:entity"] } },
+        "wasAssociatedWith": { "type": "object", "additionalProperties": { "type": "object", "required": ["prov:activity", "prov:agent"] } },
+        "wasDerivedFrom": { "type": "object", "additionalProperties": { "type": "object", "required": ["prov:generatedEntity", "prov:usedEntity"] } }
+      }
+    }
+  }
+}

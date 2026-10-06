@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "id": "d11",
+  "re": "e11",
+  "type": "events.subscribe.response",
+  "body": { "subscription_id": "sub1", "head_seq": 48209, "replay_count": 11, "replay_truncated": false }
+}

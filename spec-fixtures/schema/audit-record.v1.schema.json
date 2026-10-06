@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeus.invalid/schema/audit-record.v1",
+  "title": "Zeus audit log record v1",
+  "description": "One line of the hash-chained audit log. Normative text: docs/spec/04-audit-log-and-provenance.md. Numbers in a record MUST be integers (JCS hashing, see 00-conventions section 7).",
+  "$defs": {
+    "AuditAction": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "AuditSubject": {
+      "type": "object",
+      "properties": {
+        "job_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "run_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" },
+        "grant_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/GrantId" },
+        "approval_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId" },
+        "lease_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/SessionLeaseId" },
+        "origin": { "$ref": "https://zeus.invalid/schema/common#/$defs/Origin" },
+        "url_redacted": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "path": { "type": "string", "maxLength": 4096 }
+      }
+    },
+    "AuditRecord": {
+      "type": "object",
+      "required": ["v", "seq", "ts", "actor", "action", "subject", "outcome", "data", "prev_hash", "hash"],
+      "properties": {
+        "v": { "const": 1 },
+        "seq": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "ts": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "actor": { "$ref": "https://zeus.invalid/schema/domain#/$defs/Actor" },
+        "action": { "$ref": "#/$defs/AuditAction" },
+        "subject": { "$ref": "#/$defs/AuditSubject" },
+        "outcome": { "enum": ["ok", "denied", "error"] },
+        "data": { "type": "object" },
+        "prev_hash": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "hash": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" }
+      }
+    }
+  }
+}

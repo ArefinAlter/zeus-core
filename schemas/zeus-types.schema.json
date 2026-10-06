@@ -1,0 +1,2968 @@
+{
+  "$defs": {
+    "Actor": {
+      "description": "An actor: kind, surface and client id.",
+      "properties": {
+        "client_id": {
+          "description": "The authenticated client id, at most 128 characters.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ActorKind",
+          "description": "What kind of actor."
+        },
+        "surface": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Surface"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The surface it used."
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ActorKind": {
+      "description": "Who did something (01 section 5.3, `Actor`).",
+      "oneOf": [
+        {
+          "const": "human",
+          "description": "A person on a trust surface.",
+          "type": "string"
+        },
+        {
+          "const": "agent",
+          "description": "An autonomous client: MCP, A2A.",
+          "type": "string"
+        },
+        {
+          "const": "cli",
+          "description": "The CLI or TUI as a program (a human typing at it is `human` on surface `cli_interactive`).",
+          "type": "string"
+        },
+        {
+          "const": "extension",
+          "description": "The browser extension acting on its own.",
+          "type": "string"
+        },
+        {
+          "const": "engine",
+          "description": "Daemon internals.",
+          "type": "string"
+        },
+        {
+          "const": "policy",
+          "description": "Policy evaluation.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "Timers and recovery.",
+          "type": "string"
+        }
+      ]
+    },
+    "Approval": {
+      "description": "A request for a human decision (01 section 5.3). Immutable once decided.",
+      "properties": {
+        "allowed_scopes": {
+          "description": "Scopes a human may choose.",
+          "items": {
+            "$ref": "#/$defs/GrantScope"
+          },
+          "type": "array"
+        },
+        "created_at": {
+          "description": "Creation instant.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "decided_at": {
+          "default": null,
+          "description": "When it was decided.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decision"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The decision, once taken."
+        },
+        "expires_at": {
+          "description": "Expiry instant.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "id": {
+          "description": "Identifier.",
+          "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "job_id": {
+          "description": "The job concerned.",
+          "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ApprovalKind",
+          "description": "What is being asked."
+        },
+        "origin": {
+          "description": "The origin concerned.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason_codes": {
+          "description": "Why it is needed, for example `handoff.interrupted`, `session.first_use`, `retry.exhausted`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "run_id": {
+          "description": "The run concerned.",
+          "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/ApprovalState",
+          "description": "Lifecycle state."
+        },
+        "summary": {
+          "$ref": "#/$defs/ApprovalSummary",
+          "description": "Display data."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "state",
+        "allowed_scopes",
+        "reason_codes",
+        "summary",
+        "created_at",
+        "expires_at"
+      ],
+      "type": "object"
+    },
+    "ApprovalDecidedData": {
+      "description": "`approval.decided`.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who decided."
+        },
+        "approval_id": {
+          "description": "The approval.",
+          "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "grant_id": {
+          "description": "The grant created, if any.",
+          "pattern": "^gr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ApprovalKind",
+          "description": "Its kind."
+        },
+        "outcome": {
+          "$ref": "#/$defs/DecisionOutcome",
+          "description": "The outcome."
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GrantScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The scope chosen."
+        }
+      },
+      "required": [
+        "approval_id",
+        "kind",
+        "outcome",
+        "actor"
+      ],
+      "type": "object"
+    },
+    "ApprovalKind": {
+      "description": "What an approval asks (01 section 5.3).",
+      "oneOf": [
+        {
+          "const": "handoff",
+          "description": "A browser handoff arrived and no effective grant covers its origin.",
+          "type": "string"
+        },
+        {
+          "const": "session_grant",
+          "description": "A job names a `session_origin` and none is effective.",
+          "type": "string"
+        },
+        {
+          "const": "retry_escalation",
+          "description": "The refresh budget is exhausted.",
+          "type": "string"
+        },
+        {
+          "const": "policy_exception",
+          "description": "A rule needs a human override (destination outside the write roots, sensitive category).",
+          "type": "string"
+        },
+        {
+          "const": "workflow_plan",
+          "description": "A workflow plan is ready to run.",
+          "type": "string"
+        },
+        {
+          "const": "destructive_op",
+          "description": "A file operation that deletes or overwrites.",
+          "type": "string"
+        }
+      ]
+    },
+    "ApprovalRequestedData": {
+      "description": "`approval.requested`.",
+      "properties": {
+        "approval": {
+          "$ref": "#/$defs/Approval",
+          "description": "The approval, with daemon-computed facts."
+        }
+      },
+      "required": [
+        "approval"
+      ],
+      "type": "object"
+    },
+    "ApprovalState": {
+      "description": "Lifecycle state of an approval.",
+      "oneOf": [
+        {
+          "const": "pending",
+          "description": "Waiting for a human.",
+          "type": "string"
+        },
+        {
+          "const": "approved",
+          "description": "Approved.",
+          "type": "string"
+        },
+        {
+          "const": "denied",
+          "description": "Denied.",
+          "type": "string"
+        },
+        {
+          "const": "expired",
+          "description": "The deadline passed.",
+          "type": "string"
+        },
+        {
+          "const": "canceled",
+          "description": "Withdrawn because the job was canceled.",
+          "type": "string"
+        }
+      ]
+    },
+    "ApprovalSummary": {
+      "description": "Display data of an approval. Everything here is computed by the daemon except `title` and\n`requested_by`, which are untrusted text.",
+      "properties": {
+        "requested_by": {
+          "description": "The requesting client's name (untrusted, at most 128 characters).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Who asked."
+        },
+        "title": {
+          "description": "File name or plan title (untrusted, at most 255 characters).",
+          "type": "string"
+        },
+        "total_bytes": {
+          "description": "Total size when known.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "url_redacted": {
+          "description": "Redacted URL.",
+          "maxLength": 2048,
+          "minLength": 8,
+          "pattern": "^https?://[^@\\s#]*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "BrowserInfo": {
+      "description": "Browser context of a handoff job (01 section 3.3).",
+      "properties": {
+        "download_id": {
+          "description": "The browser's download id.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "extension_id": {
+          "description": "Extension id (informational; the attested id is authoritative).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "incognito": {
+          "description": "The download came from a private window.",
+          "type": "boolean"
+        },
+        "name": {
+          "$ref": "#/$defs/BrowserName",
+          "description": "Browser family."
+        },
+        "offer_key": {
+          "description": "`<browser>:<download id>:<start time>`, the deduplication key of a handoff offer.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profile_id": {
+          "description": "Which browser profile (and therefore which cookie jar): 32 lowercase hex characters.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "incognito"
+      ],
+      "type": "object"
+    },
+    "BrowserName": {
+      "description": "Browser family reported by the extension.",
+      "oneOf": [
+        {
+          "const": "chrome",
+          "description": "Google Chrome.",
+          "type": "string"
+        },
+        {
+          "const": "edge",
+          "description": "Microsoft Edge.",
+          "type": "string"
+        },
+        {
+          "const": "brave",
+          "description": "Brave.",
+          "type": "string"
+        },
+        {
+          "const": "chromium",
+          "description": "Chromium.",
+          "type": "string"
+        },
+        {
+          "const": "firefox",
+          "description": "Mozilla Firefox.",
+          "type": "string"
+        },
+        {
+          "const": "other",
+          "description": "Anything else.",
+          "type": "string"
+        }
+      ]
+    },
+    "DaemonStartedData": {
+      "description": "`daemon.started`.",
+      "properties": {
+        "instance_id": {
+          "description": "32 lowercase hex characters, new on every start.",
+          "type": "string"
+        },
+        "recovery": {
+          "$ref": "#/$defs/RecoverySummary",
+          "description": "What recovery did."
+        },
+        "version": {
+          "description": "Daemon version (semver).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "instance_id",
+        "recovery"
+      ],
+      "type": "object"
+    },
+    "DaemonStoppingData": {
+      "description": "`daemon.stopping`.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/StopReason",
+          "description": "Why."
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "type": "object"
+    },
+    "Decision": {
+      "description": "The recorded decision.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who decided."
+        },
+        "grant_id": {
+          "description": "The grant the decision created, if any.",
+          "pattern": "^gr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/DecisionOutcome",
+          "description": "What was decided."
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GrantScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The scope chosen (for `approve`; `deny` may carry `never`)."
+        }
+      },
+      "required": [
+        "outcome",
+        "actor"
+      ],
+      "type": "object"
+    },
+    "DecisionOutcome": {
+      "description": "The decision a human (or the system, for `expire` and `cancel`) took.",
+      "oneOf": [
+        {
+          "const": "approve",
+          "description": "Approve.",
+          "type": "string"
+        },
+        {
+          "const": "deny",
+          "description": "Deny.",
+          "type": "string"
+        },
+        {
+          "const": "expire",
+          "description": "The deadline passed (written by `system`).",
+          "type": "string"
+        },
+        {
+          "const": "cancel",
+          "description": "Withdrawn (written by `system`).",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorClass": {
+      "description": "Coarse, stable failure class (00 section 9.2). The first nine drive job retry policy\n(01 section 8); the rest classify protocol-level errors.",
+      "oneOf": [
+        {
+          "const": "transient_network",
+          "description": "Connection-level failure likely to pass.",
+          "type": "string"
+        },
+        {
+          "const": "throttled",
+          "description": "The server asked us to slow down.",
+          "type": "string"
+        },
+        {
+          "const": "auth_expired",
+          "description": "The session or credential was rejected.",
+          "type": "string"
+        },
+        {
+          "const": "url_expired",
+          "description": "The signed or one-shot URL no longer works.",
+          "type": "string"
+        },
+        {
+          "const": "blocked",
+          "description": "The server refuses this client but may accept the user's browser.",
+          "type": "string"
+        },
+        {
+          "const": "permanent",
+          "description": "Retrying cannot help.",
+          "type": "string"
+        },
+        {
+          "const": "disk",
+          "description": "Local storage problem.",
+          "type": "string"
+        },
+        {
+          "const": "integrity",
+          "description": "Bytes or metadata contradict each other or an expectation.",
+          "type": "string"
+        },
+        {
+          "const": "policy_denied",
+          "description": "A rule or a human said no.",
+          "type": "string"
+        },
+        {
+          "const": "invalid_request",
+          "description": "Malformed or semantically invalid input.",
+          "type": "string"
+        },
+        {
+          "const": "not_found",
+          "description": "The named entity does not exist.",
+          "type": "string"
+        },
+        {
+          "const": "conflict",
+          "description": "The request conflicts with current state.",
+          "type": "string"
+        },
+        {
+          "const": "unauthenticated",
+          "description": "The caller is not an authorised peer.",
+          "type": "string"
+        },
+        {
+          "const": "unsupported",
+          "description": "The peer lacks the capability or version.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "A dependency is not ready.",
+          "type": "string"
+        },
+        {
+          "const": "timeout",
+          "description": "No answer within the deadline.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Bug or invariant violation.",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorEnvelope": {
+      "description": "The error envelope every process boundary uses (00 section 9.1).",
+      "properties": {
+        "class": {
+          "$ref": "#/$defs/ErrorClass",
+          "description": "Coarse class; drives retry and presentation."
+        },
+        "code": {
+          "description": "Stable machine identifier. Never translated.",
+          "maxLength": 96,
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "description": "Code-specific structured data, at most 8 KiB serialised. No secrets.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "English diagnostic, at most 1024 characters. Never parsed. No secrets.",
+          "type": "string"
+        },
+        "retryable": {
+          "description": "True iff repeating the same request, possibly after the delay or refresh the class\nimplies, may succeed without human action.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "class",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "Event": {
+      "oneOf": [
+        {
+          "required": [
+            "seq"
+          ]
+        },
+        {
+          "required": [
+            "after_seq"
+          ]
+        }
+      ],
+      "properties": {
+        "after_seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "data": {
+          "type": "object"
+        },
+        "job_id": {
+          "description": "Identifier with the prefix `job_` followed by a 26 character ULID.",
+          "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "run_id": {
+          "description": "Identifier with the prefix `run_` followed by a 26 character ULID.",
+          "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "seq": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "ts": {
+          "description": "RFC 3339 UTC instant with exactly three fractional digits and the Z designator.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ts",
+        "type",
+        "data"
+      ],
+      "type": "object"
+    },
+    "FilenameSource": {
+      "description": "Where the resolved file name came from.",
+      "oneOf": [
+        {
+          "const": "content_disposition",
+          "description": "`Content-Disposition` (RFC 6266, `filename*` preferred).",
+          "type": "string"
+        },
+        {
+          "const": "url_path",
+          "description": "The last path segment of the URL.",
+          "type": "string"
+        },
+        {
+          "const": "handoff_hint",
+          "description": "The hint in the job spec or the browser offer.",
+          "type": "string"
+        },
+        {
+          "const": "content_type_default",
+          "description": "A default derived from the media type.",
+          "type": "string"
+        },
+        {
+          "const": "user_spec",
+          "description": "The explicit `spec.filename`.",
+          "type": "string"
+        }
+      ]
+    },
+    "GrantCreatedData": {
+      "description": "`grant.created`.",
+      "properties": {
+        "grant": {
+          "$ref": "#/$defs/SessionGrant",
+          "description": "The new grant."
+        }
+      },
+      "required": [
+        "grant"
+      ],
+      "type": "object"
+    },
+    "GrantExpiredData": {
+      "description": "`grant.expired`.",
+      "properties": {
+        "grant_id": {
+          "description": "The grant.",
+          "pattern": "^gr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "origin": {
+          "description": "Its origin.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grant_id",
+        "origin"
+      ],
+      "type": "object"
+    },
+    "GrantRevokedData": {
+      "description": "`grant.revoked`.",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who revoked it."
+        },
+        "grant_id": {
+          "description": "The grant.",
+          "pattern": "^gr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "origin": {
+          "description": "Its origin.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grant_id",
+        "origin",
+        "by"
+      ],
+      "type": "object"
+    },
+    "GrantScope": {
+      "description": "Grant scope (01 section 5.1).",
+      "oneOf": [
+        {
+          "const": "once",
+          "description": "One job and all its retries; hard maximum 24 hours.",
+          "type": "string"
+        },
+        {
+          "const": "site",
+          "description": "One exact origin for 24 hours.",
+          "type": "string"
+        },
+        {
+          "const": "workflow",
+          "description": "One origin and one run for 7 days, renewable by a human.",
+          "type": "string"
+        },
+        {
+          "const": "never",
+          "description": "Block-list entry: no expiry until a human removes it.",
+          "type": "string"
+        }
+      ]
+    },
+    "GrantScopeHint": {
+      "description": "The scopes a request may suggest (never `never`).",
+      "oneOf": [
+        {
+          "const": "once",
+          "description": "One job.",
+          "type": "string"
+        },
+        {
+          "const": "site",
+          "description": "One origin for 24 hours.",
+          "type": "string"
+        },
+        {
+          "const": "workflow",
+          "description": "One origin and one run for 7 days.",
+          "type": "string"
+        }
+      ]
+    },
+    "GrantState": {
+      "description": "Lifecycle state of a grant.",
+      "oneOf": [
+        {
+          "const": "active",
+          "description": "In force.",
+          "type": "string"
+        },
+        {
+          "const": "expired",
+          "description": "Past `expires_at`.",
+          "type": "string"
+        },
+        {
+          "const": "revoked",
+          "description": "Revoked by a human.",
+          "type": "string"
+        },
+        {
+          "const": "consumed",
+          "description": "A `once` grant whose job ended.",
+          "type": "string"
+        }
+      ]
+    },
+    "HttpVersion": {
+      "description": "HTTP protocol version observed.",
+      "oneOf": [
+        {
+          "const": "HTTP/1.1",
+          "description": "HTTP/1.1.",
+          "type": "string"
+        },
+        {
+          "const": "h2",
+          "description": "HTTP/2.",
+          "type": "string"
+        },
+        {
+          "const": "h3",
+          "description": "HTTP/3.",
+          "type": "string"
+        }
+      ]
+    },
+    "Job": {
+      "description": "The aggregate root (01 section 3.1).",
+      "properties": {
+        "approval_id": {
+          "default": null,
+          "description": "The pending approval, if any.",
+          "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "description": "Creation instant.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorEnvelope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The most recent error."
+        },
+        "grant_id": {
+          "default": null,
+          "description": "The effective grant the job currently relies on.",
+          "pattern": "^gr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Identifier.",
+          "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "probe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProbeResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The latest probe."
+        },
+        "progress": {
+          "$ref": "#/$defs/Progress",
+          "description": "Committed-byte progress."
+        },
+        "quarantine_reasons": {
+          "description": "Present when `quarantined`.",
+          "items": {
+            "$ref": "#/$defs/QuarantineReason"
+          },
+          "type": "array"
+        },
+        "quarantined": {
+          "description": "Only ever true when `state` is `completed`; immutable afterwards.",
+          "type": "boolean"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Present only when `completed`."
+        },
+        "retry": {
+          "$ref": "#/$defs/RetryState",
+          "description": "Retry counters and timers."
+        },
+        "spec": {
+          "$ref": "#/$defs/JobSpec",
+          "description": "The immutable request."
+        },
+        "state": {
+          "$ref": "#/$defs/JobState",
+          "description": "Current state."
+        },
+        "state_since": {
+          "description": "Changes only on a transition.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "transport": {
+          "$ref": "#/$defs/Transport",
+          "description": "How bytes currently flow."
+        },
+        "updated_at": {
+          "description": "Changes on any field change.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "quarantined",
+        "spec",
+        "created_at",
+        "updated_at",
+        "state_since",
+        "progress",
+        "retry",
+        "transport"
+      ],
+      "type": "object"
+    },
+    "JobCompletedData": {
+      "description": "`job.completed`.",
+      "properties": {
+        "blake3": {
+          "description": "BLAKE3.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "duration_ms": {
+          "description": "Wall time from creation to completion.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "description": "Absolute final path.",
+          "type": "string"
+        },
+        "quarantined": {
+          "description": "Quarantine flag.",
+          "type": "boolean"
+        },
+        "sha256": {
+          "description": "SHA-256.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": {
+          "description": "Size.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size_bytes",
+        "sha256",
+        "blake3",
+        "quarantined",
+        "duration_ms"
+      ],
+      "type": "object"
+    },
+    "JobCreatedData": {
+      "description": "`job.created`.",
+      "properties": {
+        "filename_hint": {
+          "description": "File name hint (untrusted).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "description": "Origin of the URL.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority",
+          "description": "Effective priority."
+        },
+        "session_origin": {
+          "default": null,
+          "description": "Origin whose session the job needs.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/Source",
+          "description": "Who asked."
+        },
+        "state": {
+          "$ref": "#/$defs/JobState",
+          "description": "`queued` or `awaiting_approval`."
+        },
+        "url_redacted": {
+          "description": "The URL after `redact_url(log)`.",
+          "maxLength": 2048,
+          "minLength": 8,
+          "pattern": "^https?://[^@\\s#]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "state",
+        "url_redacted",
+        "priority"
+      ],
+      "type": "object"
+    },
+    "JobFailedData": {
+      "description": "`job.failed`.",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/ErrorEnvelope",
+          "description": "The error."
+        },
+        "suggested_next": {
+          "$ref": "#/$defs/SuggestedNext",
+          "description": "Advice for agents."
+        }
+      },
+      "required": [
+        "error",
+        "suggested_next"
+      ],
+      "type": "object"
+    },
+    "JobProbedData": {
+      "description": "`job.probed`.",
+      "properties": {
+        "probe": {
+          "$ref": "#/$defs/ProbeResult",
+          "description": "The probe result."
+        }
+      },
+      "required": [
+        "probe"
+      ],
+      "type": "object"
+    },
+    "JobProgressData": {
+      "description": "`job.progress` (ephemeral).",
+      "properties": {
+        "progress": {
+          "$ref": "#/$defs/Progress",
+          "description": "Committed-byte progress."
+        }
+      },
+      "required": [
+        "progress"
+      ],
+      "type": "object"
+    },
+    "JobQuarantinedData": {
+      "description": "`job.quarantined`.",
+      "properties": {
+        "reasons": {
+          "description": "Which rules fired (at least one).",
+          "items": {
+            "$ref": "#/$defs/QuarantineReason"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "reasons"
+      ],
+      "type": "object"
+    },
+    "JobResult": {
+      "description": "The outcome of a completed job (01 section 3.9).",
+      "properties": {
+        "blake3": {
+          "description": "BLAKE3 of the file at `path`.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "completed_at": {
+          "description": "Instant of the S80 commit.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "detected_mime": {
+          "default": null,
+          "description": "From magic bytes; `null` if unknown.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Absolute final path on the daemon's host.",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "SHA-256 of the file at `path`.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": {
+          "description": "Size of the file at `path`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size_bytes",
+        "sha256",
+        "blake3",
+        "completed_at"
+      ],
+      "type": "object"
+    },
+    "JobRetryScheduledData": {
+      "description": "`job.retry_scheduled`.",
+      "properties": {
+        "attempt": {
+          "description": "Which retry this is (1 for the first).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "delay_ms": {
+          "description": "Backoff delay.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "error": {
+          "$ref": "#/$defs/ErrorEnvelope",
+          "description": "The error that caused it."
+        },
+        "next_attempt_at": {
+          "description": "When the retry fires.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "restart_from_zero": {
+          "default": false,
+          "description": "The restart invalidated every committed range.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "attempt",
+        "error",
+        "delay_ms",
+        "next_attempt_at"
+      ],
+      "type": "object"
+    },
+    "JobSpec": {
+      "description": "The immutable request that created a job. Only `priority` may change afterwards.\n\nFields with a default are `Option` here so a client request round-trips unchanged; the daemon\ncalls [`JobSpec::apply_defaults`] before storing the job, and the accessors below read the\neffective value.",
+      "properties": {
+        "dest_dir": {
+          "description": "Destination directory; must resolve inside a configured write root.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_sha256": {
+          "description": "A mismatch is an `integrity` failure after at most one restart.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_size": {
+          "description": "Likewise for the size in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "extra_headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "At most 16 headers from [`ALLOWED_EXTRA_HEADERS`].",
+          "type": "object"
+        },
+        "filename": {
+          "description": "A file name hint. The final name comes from `Content-Disposition` first.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grant_scope_hint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GrantScopeHint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A suggestion shown on the approval; the human chooses."
+        },
+        "hint_url": {
+          "description": "Last known resolved (often signed) URL; tried first, `url` is the fallback.",
+          "maxLength": 8192,
+          "minLength": 8,
+          "pattern": "^https?://",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "idempotency_key": {
+          "description": "Client-chosen idempotency key (00 section 5.4).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Free-form tags from the caller. Untrusted data.",
+          "type": "object"
+        },
+        "max_connections": {
+          "description": "Upper bound on connections, 1 to 32. Default 8.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "overwrite": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Overwrite"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What to do if the final path exists. Default `rename`."
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Priority"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Default `normal` (`high` for browser handoffs). The only mutable field."
+        },
+        "referrer": {
+          "description": "Sent as `Referer` only for same-origin or allow-listed requests; always kept for provenance.",
+          "maxLength": 8192,
+          "minLength": 8,
+          "pattern": "^https?://",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_origin": {
+          "description": "The origin whose session the job needs; its presence makes the job require an effective grant.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/Source",
+          "description": "Who asked."
+        },
+        "transport_hint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TransportHint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Default `auto`."
+        },
+        "url": {
+          "description": "The stable address of the resource (http or https, at most 8192 bytes).",
+          "maxLength": 8192,
+          "minLength": 8,
+          "pattern": "^https?://",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "source"
+      ],
+      "type": "object"
+    },
+    "JobState": {
+      "description": "The twelve job states (01 section 6).",
+      "oneOf": [
+        {
+          "const": "queued",
+          "description": "Accepted, waiting for a scheduler slot.",
+          "type": "string"
+        },
+        {
+          "const": "probing",
+          "description": "Probe and resume validation in flight; no payload bytes are committed in this state.",
+          "type": "string"
+        },
+        {
+          "const": "awaiting_approval",
+          "description": "Blocked on a human decision (an Approval is pending).",
+          "type": "string"
+        },
+        {
+          "const": "awaiting_session",
+          "description": "Blocked on session material, a fresh URL or the in-browser proxy; no human needed.",
+          "type": "string"
+        },
+        {
+          "const": "downloading",
+          "description": "Payload bytes are being fetched and committed.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Held by an explicit pause; resumes only on request.",
+          "type": "string"
+        },
+        {
+          "const": "retry_scheduled",
+          "description": "Waiting for `next_attempt_at` after a retryable error.",
+          "type": "string"
+        },
+        {
+          "const": "verifying",
+          "description": "All bytes committed; hashing and content checks.",
+          "type": "string"
+        },
+        {
+          "const": "finalizing",
+          "description": "Non-interruptible: OS marks, fsync, atomic rename, completion commit.",
+          "type": "string"
+        },
+        {
+          "const": "completed",
+          "description": "File is at its final path and verified. May carry `quarantined = true`.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Stopped with an error. Only a manual retry leaves this state.",
+          "type": "string"
+        },
+        {
+          "const": "canceled",
+          "description": "Stopped by request; partial data deleted.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobStateChangedData": {
+      "description": "`job.state_changed`.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who."
+        },
+        "cause": {
+          "$ref": "#/$defs/StateCause",
+          "description": "Why."
+        },
+        "from": {
+          "$ref": "#/$defs/JobState",
+          "description": "Previous state."
+        },
+        "to": {
+          "$ref": "#/$defs/JobState",
+          "description": "New state."
+        },
+        "transition": {
+          "$ref": "#/$defs/TransitionId",
+          "description": "The transition id from the table."
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "transition",
+        "cause",
+        "actor"
+      ],
+      "type": "object"
+    },
+    "JobSummary": {
+      "description": "Compact projection of [`Job`] for list views and the extension popup.",
+      "properties": {
+        "bytes_done": {
+          "description": "Committed bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "description": "Total, when known.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "created_at": {
+          "description": "Creation instant.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "filename": {
+          "default": null,
+          "description": "The resolved or hinted name. Untrusted text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Identifier.",
+          "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorEnvelope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The most recent error."
+        },
+        "origin": {
+          "default": null,
+          "description": "Origin of the job URL.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "quarantined": {
+          "description": "Quarantine flag.",
+          "type": "boolean"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/SourceKind",
+          "description": "Who asked."
+        },
+        "state": {
+          "$ref": "#/$defs/JobState",
+          "description": "Current state."
+        },
+        "updated_at": {
+          "description": "Last change.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "url_redacted": {
+          "description": "The URL after `redact_url(log)`.",
+          "maxLength": 2048,
+          "minLength": 8,
+          "pattern": "^https?://[^@\\s#]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "quarantined",
+        "source_kind",
+        "url_redacted",
+        "bytes_done",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "JobThrottledData": {
+      "description": "`job.throttled`.",
+      "properties": {
+        "concurrency_after": {
+          "description": "Connections to the host after.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "concurrency_before": {
+          "description": "Connections to the host before.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "host": {
+          "description": "Host that throttled.",
+          "type": "string"
+        },
+        "retry_after_ms": {
+          "default": null,
+          "description": "`Retry-After` in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "default": null,
+          "description": "HTTP status, when the signal was a status.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "host",
+        "concurrency_before",
+        "concurrency_after"
+      ],
+      "type": "object"
+    },
+    "JobVerifiedData": {
+      "description": "`job.verified`.",
+      "properties": {
+        "blake3": {
+          "description": "BLAKE3.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "declared_mime": {
+          "default": null,
+          "description": "From `Content-Type`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detected_mime": {
+          "default": null,
+          "description": "From magic bytes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_sha256_match": {
+          "description": "Whether `expected_sha256` matched; `null` when none was given.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "expected_size_match": {
+          "description": "Whether `expected_size` matched; `null` when none was given.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "mime_match": {
+          "default": null,
+          "description": "Whether the two agree, when both are known.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sha256": {
+          "description": "SHA-256.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": {
+          "description": "Size of the verified file.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "size_bytes",
+        "sha256",
+        "blake3"
+      ],
+      "type": "object"
+    },
+    "LeasePurpose": {
+      "description": "Why a lease was requested (`session.leased`).",
+      "oneOf": [
+        {
+          "const": "download",
+          "description": "Bytes will be downloaded with it.",
+          "type": "string"
+        },
+        {
+          "const": "probe",
+          "description": "A probe.",
+          "type": "string"
+        },
+        {
+          "const": "refresh",
+          "description": "A URL or session refresh.",
+          "type": "string"
+        }
+      ]
+    },
+    "Overwrite": {
+      "description": "What to do if the final path exists (`spec.overwrite`).",
+      "oneOf": [
+        {
+          "const": "rename",
+          "description": "Append ` (1)`, ` (2)`, ... before the extension.",
+          "type": "string"
+        },
+        {
+          "const": "fail",
+          "description": "Refuse.",
+          "type": "string"
+        },
+        {
+          "const": "replace",
+          "description": "Move the old file to the application trash first (03 section 8.1).",
+          "type": "string"
+        }
+      ]
+    },
+    "Priority": {
+      "description": "Scheduling weight class (01 section 3.2). Weighted fair queueing uses 1, 2 and 4.",
+      "oneOf": [
+        {
+          "const": "low",
+          "description": "Weight 1.",
+          "type": "string"
+        },
+        {
+          "const": "normal",
+          "description": "Weight 2. The default.",
+          "type": "string"
+        },
+        {
+          "const": "high",
+          "description": "Weight 4. The default for browser handoffs.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProbeMethod": {
+      "description": "How a probe was performed.",
+      "oneOf": [
+        {
+          "const": "range_get",
+          "description": "A `GET` with `Range: bytes=0-0` (the default).",
+          "type": "string"
+        },
+        {
+          "const": "head",
+          "description": "A `HEAD` request.",
+          "type": "string"
+        },
+        {
+          "const": "get_stream",
+          "description": "A plain `GET`, when `HEAD` and ranged `GET` are both refused.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProbeResult": {
+      "description": "The result of one probe (each entry into `probing`, 01 section 3.5).",
+      "properties": {
+        "content_encoding": {
+          "default": null,
+          "description": "As received; anything but identity on an identity-only request is an error.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_type": {
+          "default": null,
+          "description": "As received.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filename": {
+          "$ref": "#/$defs/ResolvedFilename",
+          "description": "The resolved file name."
+        },
+        "final_url_redacted": {
+          "description": "The final URL after redirects, redacted.",
+          "maxLength": 2048,
+          "minLength": 8,
+          "pattern": "^https?://[^@\\s#]*$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "http_version": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Protocol version of the response."
+        },
+        "interstitial_suspected": {
+          "default": false,
+          "description": "The response looked like an HTML wall instead of the expected file.",
+          "type": "boolean"
+        },
+        "method": {
+          "$ref": "#/$defs/ProbeMethod",
+          "description": "How it was performed."
+        },
+        "probed_at": {
+          "description": "When the probe finished.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "range_support": {
+          "$ref": "#/$defs/RangeSupport",
+          "description": "What was learned about ranges."
+        },
+        "redirects": {
+          "default": 0,
+          "description": "Redirects followed (at most 10).",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "requires_session": {
+          "description": "The origin refused an unauthenticated request in a way a session may fix.",
+          "type": "boolean"
+        },
+        "status": {
+          "description": "The status of the final response.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_bytes": {
+          "default": null,
+          "description": "From `Content-Range`, else `Content-Length` of an unranged `200`, else `null`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "transport": {
+          "$ref": "#/$defs/Transport",
+          "description": "Which transport carried it."
+        },
+        "validators": {
+          "$ref": "#/$defs/Validators",
+          "description": "The representation's validators."
+        }
+      },
+      "required": [
+        "probed_at",
+        "method",
+        "transport",
+        "status",
+        "range_support",
+        "filename",
+        "validators",
+        "requires_session"
+      ],
+      "type": "object"
+    },
+    "Progress": {
+      "description": "Committed-byte progress (01 section 3.7). Always reflects committed bytes, so what an agent reads\nsurvives a crash.",
+      "properties": {
+        "bytes_done": {
+          "description": "Committed bytes (during `verifying`, bytes hashed so far).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes_total": {
+          "description": "Total, `null` while unknown.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "eta_s": {
+          "description": "Seconds remaining, `null` when either input is unknown or the rate is zero.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "last_error_class": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorClass"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Class of the latest error, kept after recovery so agents can see flakiness."
+        },
+        "rate_ewma": {
+          "description": "Bytes per second, EWMA with alpha 0.2 over 1 s samples; zero outside `downloading`/`verifying`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "segments_active": {
+          "description": "Workers currently transferring (at most 64).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "updated_at": {
+          "description": "When this snapshot was taken.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bytes_done",
+        "rate_ewma",
+        "segments_active",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "QuarantineReason": {
+      "description": "Why a completed file carries Zeus's own stronger flag (01 section 11.3).",
+      "oneOf": [
+        {
+          "const": "executable_type",
+          "description": "Executable, script, installer, `.jar`, `.lnk`, `.scr`, `.dll` or a macro-enabled document.",
+          "type": "string"
+        },
+        {
+          "const": "mime_mismatch",
+          "description": "Detected type contradicts the declared one across a safety boundary.",
+          "type": "string"
+        },
+        {
+          "const": "html_disguised",
+          "description": "HTML or script content under a non-HTML name or type.",
+          "type": "string"
+        },
+        {
+          "const": "archive_limits",
+          "description": "An archive exceeds the safety limits.",
+          "type": "string"
+        },
+        {
+          "const": "av_flagged",
+          "description": "The optional antivirus hook reported the file as not clean.",
+          "type": "string"
+        },
+        {
+          "const": "untrusted_origin",
+          "description": "The origin is not trusted and `quarantine_untrusted` is enabled.",
+          "type": "string"
+        },
+        {
+          "const": "session_derived",
+          "description": "Retrieved with a session lease and `quarantine_session_files` is enabled.",
+          "type": "string"
+        }
+      ]
+    },
+    "RangeSupport": {
+      "description": "What the probe learned about range support (01 section 3.5).",
+      "oneOf": [
+        {
+          "const": "verified",
+          "description": "A `206` with a correct `Content-Range` was observed in this job.",
+          "type": "string"
+        },
+        {
+          "const": "unsupported",
+          "description": "A `200` answered a ranged request.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Not known yet. `Accept-Ranges` is advisory and never sufficient.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoverySummary": {
+      "description": "Startup recovery summary (`daemon.started.recovery`).",
+      "properties": {
+        "audit_chain_ok": {
+          "description": "Whether the audit chain tail verified.",
+          "type": "boolean"
+        },
+        "jobs_failed": {
+          "description": "Jobs failed as a crash loop.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "jobs_recovered": {
+          "description": "Jobs moved back to `queued`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "orphans_found": {
+          "description": "`.zpart` files no job owns.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "jobs_recovered",
+        "jobs_failed",
+        "orphans_found",
+        "audit_chain_ok"
+      ],
+      "type": "object"
+    },
+    "RefreshNeed": {
+      "description": "What `job.state_changed` and friends say about why session material is needed.",
+      "oneOf": [
+        {
+          "const": "session",
+          "description": "New cookies and headers.",
+          "type": "string"
+        },
+        {
+          "const": "url",
+          "description": "A fresh signed URL.",
+          "type": "string"
+        },
+        {
+          "const": "proxy",
+          "description": "The in-browser fetch proxy.",
+          "type": "string"
+        }
+      ]
+    },
+    "RefreshReason": {
+      "description": "Why session material is needed (`session.refresh_needed`).",
+      "oneOf": [
+        {
+          "const": "first_use",
+          "description": "First use of a grant.",
+          "type": "string"
+        },
+        {
+          "const": "auth_expired",
+          "description": "The server rejected the session.",
+          "type": "string"
+        },
+        {
+          "const": "url_expired",
+          "description": "The signed URL expired.",
+          "type": "string"
+        },
+        {
+          "const": "blocked",
+          "description": "The server blocked the engine.",
+          "type": "string"
+        },
+        {
+          "const": "lease_expired",
+          "description": "The lease time to live ended.",
+          "type": "string"
+        },
+        {
+          "const": "extension_disconnected",
+          "description": "The extension connection was lost.",
+          "type": "string"
+        }
+      ]
+    },
+    "ResolvedFilename": {
+      "description": "A resolved file name and its provenance.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/FilenameSource",
+          "description": "Where it came from."
+        },
+        "value": {
+          "description": "The name, 1 to 255 characters. Untrusted text; always sanitised before use as a path.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "source"
+      ],
+      "type": "object"
+    },
+    "RetryState": {
+      "description": "Counters that make retry policy restart-safe (01 section 3.8).",
+      "properties": {
+        "attempt": {
+          "description": "Times the job entered `probing`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "auth_refreshes": {
+          "description": "Session or URL refreshes since the last reset (budget 3).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "consecutive_failures": {
+          "description": "Failures since the last progress reset.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "integrity_restarts": {
+          "description": "Restarts from zero caused by a hash or size mismatch (budget 1).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "last_progress_at": {
+          "default": null,
+          "description": "When `bytes_done` last grew by at least the reset threshold.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "next_attempt_at": {
+          "default": null,
+          "description": "Set while `retry_scheduled`.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "proxy_escalations": {
+          "description": "Switches to the in-browser proxy (budget 1).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "recovery_count": {
+          "description": "Daemon-restart recoveries since the last committed progress (crash-loop limit 3).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resource_restarts": {
+          "description": "Restarts caused by the resource changing upstream (budget 2).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "session_wait_deadline_at": {
+          "default": null,
+          "description": "When `awaiting_session` gives up.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "attempt",
+        "consecutive_failures",
+        "auth_refreshes",
+        "proxy_escalations",
+        "integrity_restarts",
+        "resource_restarts",
+        "recovery_count"
+      ],
+      "type": "object"
+    },
+    "Segment": {
+      "description": "A planned work unit over the half-open interval `[start, end)`.",
+      "properties": {
+        "committed_bytes": {
+          "description": "Bytes of this interval already committed (not necessarily contiguous from `start`).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "end": {
+          "description": "One past the last byte.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "index": {
+          "description": "Position in the current plan.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start": {
+          "description": "First byte.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/$defs/SegmentState",
+          "description": "State."
+        }
+      },
+      "required": [
+        "index",
+        "start",
+        "end",
+        "committed_bytes",
+        "state"
+      ],
+      "type": "object"
+    },
+    "SegmentState": {
+      "description": "State of a planned segment.",
+      "oneOf": [
+        {
+          "const": "pending",
+          "description": "Not started.",
+          "type": "string"
+        },
+        {
+          "const": "active",
+          "description": "A worker is transferring it.",
+          "type": "string"
+        },
+        {
+          "const": "done",
+          "description": "Fully committed.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Its retry budget is spent; job-level classification applies.",
+          "type": "string"
+        }
+      ]
+    },
+    "SessionGrant": {
+      "description": "A recorded consent. Holds no cookies: cookies are fetched per use and wiped.",
+      "properties": {
+        "approval_id": {
+          "description": "The approval that created it.",
+          "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "created_at": {
+          "description": "Creation instant.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "decided_by": {
+          "$ref": "#/$defs/Actor",
+          "description": "The human who decided."
+        },
+        "expires_at": {
+          "description": "`null` for `never`.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Identifier.",
+          "pattern": "^gr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "job_id": {
+          "description": "For `once`.",
+          "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_used_at": {
+          "default": null,
+          "description": "The latest lease.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "description": "The one origin the grant covers.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": "string"
+        },
+        "renewable": {
+          "description": "Whether a human can renew it.",
+          "type": "boolean"
+        },
+        "renewal_count": {
+          "default": 0,
+          "description": "Times it was renewed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revoked_at": {
+          "default": null,
+          "description": "When it was revoked.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_id": {
+          "description": "For `workflow`.",
+          "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/GrantScope",
+          "description": "Scope."
+        },
+        "state": {
+          "$ref": "#/$defs/GrantState",
+          "description": "Lifecycle state."
+        },
+        "uses": {
+          "description": "Number of leases issued under it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "origin",
+        "scope",
+        "state",
+        "created_at",
+        "approval_id",
+        "decided_by",
+        "uses",
+        "renewable"
+      ],
+      "type": "object"
+    },
+    "SessionLeasedData": {
+      "description": "`session.leased`. Carries counts and handles only: never a cookie name or value.",
+      "properties": {
+        "cookie_count": {
+          "description": "How many cookies it contains.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "grant_id": {
+          "description": "The grant it was issued under.",
+          "pattern": "^gr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "lease_id": {
+          "description": "The lease handle.",
+          "pattern": "^sess_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "origin": {
+          "description": "The origin.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": "string"
+        },
+        "purpose": {
+          "$ref": "#/$defs/LeasePurpose",
+          "description": "Why it was requested."
+        },
+        "ttl_ms": {
+          "description": "Time to live.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "lease_id",
+        "grant_id",
+        "origin",
+        "purpose",
+        "cookie_count",
+        "ttl_ms"
+      ],
+      "type": "object"
+    },
+    "SessionRefreshNeededData": {
+      "description": "`session.refresh_needed`.",
+      "properties": {
+        "attempt": {
+          "description": "Which attempt (1 for the first).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "deadline_at": {
+          "description": "When the wait gives up.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "need": {
+          "$ref": "#/$defs/RefreshNeed",
+          "description": "What is needed."
+        },
+        "origin": {
+          "description": "The origin concerned.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/RefreshReason",
+          "description": "Why."
+        }
+      },
+      "required": [
+        "origin",
+        "need",
+        "reason",
+        "attempt",
+        "deadline_at"
+      ],
+      "type": "object"
+    },
+    "Source": {
+      "description": "Records who asked and by which route.",
+      "properties": {
+        "browser": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrowserInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Browser context for `browser_handoff`."
+        },
+        "client_id": {
+          "description": "The authenticated client, at most 128 characters. Untrusted text when shown to a model.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/SourceKind",
+          "description": "The kind; determines default priority and which approvals apply."
+        },
+        "run_id": {
+          "description": "The workflow run (for `workflow` and `agent` jobs started by a run).",
+          "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceVia"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The channel."
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "SourceKind": {
+      "description": "Who asked, by which route (01 section 3.3).",
+      "oneOf": [
+        {
+          "const": "browser_handoff",
+          "description": "A failed or user-forwarded browser download through the extension.",
+          "type": "string"
+        },
+        {
+          "const": "agent",
+          "description": "An MCP tool call or an A2A task.",
+          "type": "string"
+        },
+        {
+          "const": "cli",
+          "description": "A human using the CLI or TUI.",
+          "type": "string"
+        },
+        {
+          "const": "workflow",
+          "description": "The workflow runner executing an approved plan.",
+          "type": "string"
+        }
+      ]
+    },
+    "SourceVia": {
+      "description": "The channel a job request arrived on.",
+      "oneOf": [
+        {
+          "const": "mcp",
+          "description": "MCP server.",
+          "type": "string"
+        },
+        {
+          "const": "a2a",
+          "description": "A2A endpoint.",
+          "type": "string"
+        },
+        {
+          "const": "jsonrpc",
+          "description": "Raw local JSON-RPC.",
+          "type": "string"
+        },
+        {
+          "const": "cli",
+          "description": "CLI.",
+          "type": "string"
+        },
+        {
+          "const": "tui",
+          "description": "TUI.",
+          "type": "string"
+        },
+        {
+          "const": "native_messaging",
+          "description": "Native messaging from the extension.",
+          "type": "string"
+        },
+        {
+          "const": "workflow_runner",
+          "description": "The workflow runner.",
+          "type": "string"
+        }
+      ]
+    },
+    "StateCause": {
+      "description": "Closed set of causes carried by `job.state_changed` (01 section 7.1).",
+      "oneOf": [
+        {
+          "const": "created",
+          "description": "Reserved for the creation event payload.",
+          "type": "string"
+        },
+        {
+          "const": "user_request",
+          "description": "Pause, resume, cancel or retry by a client.",
+          "type": "string"
+        },
+        {
+          "const": "scheduler",
+          "description": "A scheduler slot was granted.",
+          "type": "string"
+        },
+        {
+          "const": "probe_ok",
+          "description": "The probe succeeded.",
+          "type": "string"
+        },
+        {
+          "const": "session_needed",
+          "description": "Session material, a fresh URL or the proxy is needed.",
+          "type": "string"
+        },
+        {
+          "const": "approval_needed",
+          "description": "A human decision is needed.",
+          "type": "string"
+        },
+        {
+          "const": "approval_approved",
+          "description": "The approval was approved.",
+          "type": "string"
+        },
+        {
+          "const": "approval_denied",
+          "description": "The approval was denied.",
+          "type": "string"
+        },
+        {
+          "const": "approval_expired",
+          "description": "The approval expired.",
+          "type": "string"
+        },
+        {
+          "const": "session_delivered",
+          "description": "Session material arrived.",
+          "type": "string"
+        },
+        {
+          "const": "session_deadline",
+          "description": "The `awaiting_session` deadline passed.",
+          "type": "string"
+        },
+        {
+          "const": "refresh_impossible",
+          "description": "The extension cannot refresh.",
+          "type": "string"
+        },
+        {
+          "const": "retry_timer",
+          "description": "`next_attempt_at` was reached.",
+          "type": "string"
+        },
+        {
+          "const": "retry_now",
+          "description": "A client asked to retry now.",
+          "type": "string"
+        },
+        {
+          "const": "all_committed",
+          "description": "All ranges are committed.",
+          "type": "string"
+        },
+        {
+          "const": "verification_ok",
+          "description": "Verification passed.",
+          "type": "string"
+        },
+        {
+          "const": "integrity_restart",
+          "description": "An integrity mismatch restarts the download.",
+          "type": "string"
+        },
+        {
+          "const": "integrity_failed",
+          "description": "An integrity mismatch with no restart budget left.",
+          "type": "string"
+        },
+        {
+          "const": "finalized",
+          "description": "The file reached its final path.",
+          "type": "string"
+        },
+        {
+          "const": "finalize_error",
+          "description": "A disk error during finalization.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "A classified error.",
+          "type": "string"
+        },
+        {
+          "const": "escalation",
+          "description": "The refresh budget is exhausted.",
+          "type": "string"
+        },
+        {
+          "const": "grant_revoked",
+          "description": "A grant the job depends on was revoked.",
+          "type": "string"
+        },
+        {
+          "const": "grant_expired",
+          "description": "A grant the job depends on expired.",
+          "type": "string"
+        },
+        {
+          "const": "policy",
+          "description": "A policy rule applies.",
+          "type": "string"
+        },
+        {
+          "const": "recovered",
+          "description": "Startup recovery re-queued the job.",
+          "type": "string"
+        },
+        {
+          "const": "crash_loop",
+          "description": "Startup recovery gave up (crash loop).",
+          "type": "string"
+        }
+      ]
+    },
+    "StopReason": {
+      "description": "Why the daemon stops (`daemon.stopping`).",
+      "oneOf": [
+        {
+          "const": "user_request",
+          "description": "`daemon.shutdown` was called.",
+          "type": "string"
+        },
+        {
+          "const": "signal",
+          "description": "SIGTERM, console close.",
+          "type": "string"
+        },
+        {
+          "const": "upgrade",
+          "description": "An upgrade restarts the daemon.",
+          "type": "string"
+        },
+        {
+          "const": "fatal_error",
+          "description": "An unrecoverable error.",
+          "type": "string"
+        }
+      ]
+    },
+    "SuggestedAction": {
+      "description": "Advice for agents on what to do after a failure. Never an automatic action.",
+      "oneOf": [
+        {
+          "const": "retry",
+          "description": "Retry the job.",
+          "type": "string"
+        },
+        {
+          "const": "approve",
+          "description": "Ask a human to approve.",
+          "type": "string"
+        },
+        {
+          "const": "request_session",
+          "description": "Request a session.",
+          "type": "string"
+        },
+        {
+          "const": "open_in_browser",
+          "description": "Open the URL in the browser.",
+          "type": "string"
+        },
+        {
+          "const": "free_disk_space",
+          "description": "Free disk space.",
+          "type": "string"
+        },
+        {
+          "const": "fix_destination",
+          "description": "Fix the destination.",
+          "type": "string"
+        },
+        {
+          "const": "check_url",
+          "description": "Check the URL.",
+          "type": "string"
+        },
+        {
+          "const": "none",
+          "description": "Nothing to do.",
+          "type": "string"
+        }
+      ]
+    },
+    "SuggestedNext": {
+      "description": "`job.failed.suggested_next`.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/SuggestedAction",
+          "description": "The advised action."
+        },
+        "tool": {
+          "default": null,
+          "description": "A Zeus MCP tool name such as `zeus_control`, or `null`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    "Surface": {
+      "description": "The surface an action arrived through.",
+      "oneOf": [
+        {
+          "const": "extension_popup",
+          "description": "The extension popup.",
+          "type": "string"
+        },
+        {
+          "const": "extension_options",
+          "description": "The extension options page.",
+          "type": "string"
+        },
+        {
+          "const": "extension_sidepanel",
+          "description": "The extension side panel.",
+          "type": "string"
+        },
+        {
+          "const": "extension_notification",
+          "description": "A browser notification button.",
+          "type": "string"
+        },
+        {
+          "const": "tui",
+          "description": "The terminal UI.",
+          "type": "string"
+        },
+        {
+          "const": "cli_interactive",
+          "description": "An interactive CLI prompt on the controlling terminal.",
+          "type": "string"
+        },
+        {
+          "const": "mcp",
+          "description": "The MCP server.",
+          "type": "string"
+        },
+        {
+          "const": "a2a",
+          "description": "The A2A endpoint.",
+          "type": "string"
+        },
+        {
+          "const": "jsonrpc",
+          "description": "Raw local JSON-RPC.",
+          "type": "string"
+        }
+      ]
+    },
+    "TransitionId": {
+      "description": "A transition identifier `S<nn>`, validated against the table.",
+      "type": "string"
+    },
+    "Transport": {
+      "description": "How bytes currently flow (01 section 3.1, `transport`).",
+      "oneOf": [
+        {
+          "const": "direct",
+          "description": "The engine's own HTTP client.",
+          "type": "string"
+        },
+        {
+          "const": "browser_proxy",
+          "description": "The user's browser fetches the bytes (the in-browser proxy, 02 section 9).",
+          "type": "string"
+        }
+      ]
+    },
+    "TransportHint": {
+      "description": "What the caller asks of the transport (`spec.transport_hint`).",
+      "oneOf": [
+        {
+          "const": "auto",
+          "description": "Direct first, the proxy only after a `blocked` classification.",
+          "type": "string"
+        },
+        {
+          "const": "direct",
+          "description": "Never use the browser.",
+          "type": "string"
+        },
+        {
+          "const": "browser_proxy",
+          "description": "Force the in-browser fetch fallback (needs a connected extension and an effective grant).",
+          "type": "string"
+        }
+      ]
+    },
+    "Validators": {
+      "description": "Entity tags and dates that identify one representation of a resource (01 section 3.4).",
+      "properties": {
+        "etag": {
+          "default": null,
+          "description": "Raw entity-tag including quotes and any `W/` prefix. A weak tag is never used in `If-Range`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_modified": {
+          "default": null,
+          "description": "Raw HTTP-date.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_modified_strong": {
+          "default": null,
+          "description": "True iff `Last-Modified` is at least one second older than the response `Date` (RFC 9110\nsection 8.8.2.2), which is when it may be used in `If-Range`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "repr_digest": {
+          "default": null,
+          "description": "Raw `Repr-Digest` header value (RFC 9530). Informational.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://zeus.invalid/schema/zeus-types.generated",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Generated by zeus-types; not normative. The normative schemas are docs/spec/schema in the zeus repository.",
+  "title": "Zeus domain types (generated from the Rust definitions)"
+}

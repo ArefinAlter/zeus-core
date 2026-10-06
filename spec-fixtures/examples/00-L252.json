@@ -1,0 +1,7 @@
+{
+  "code": "http.status_429",
+  "class": "throttled",
+  "message": "Server answered 429 Too Many Requests.",
+  "retryable": true,
+  "details": { "status": 429, "retry_after_ms": 30000, "host": "files.example.com" }
+}

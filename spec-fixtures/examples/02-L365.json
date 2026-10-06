@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "id": "e2",
+  "type": "handoff.offer",
+  "body": {
+    "offer_key": "chrome:317:2026-10-05T09:15:12.004Z",
+    "trigger": "interrupted",
+    "download": {
+      "browser_download_id": 317,
+      "url": "https://portal.example.org/download/8841",
+      "final_url": "https://cdn.example.org/blobs/dataset-v3.tar.zst?X-Amz-Expires=300&X-Amz-Signature=EXAMPLE",
+      "referrer": "https://portal.example.org/datasets/v3",
+      "filename": "dataset-v3.tar.zst",
+      "mime": "application/zstd",
+      "bytes_received": 402653184,
+      "total_bytes": 1288490188,
+      "start_time": "2026-10-05T09:15:12.004Z",
+      "incognito": false,
+      "can_resume": false,
+      "interrupt_reason": "NETWORK_DISCONNECTED"
+    },
+    "validators": null
+  }
+}

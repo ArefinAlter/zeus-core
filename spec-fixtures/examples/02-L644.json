@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "id": "d8",
+  "type": "fetch.range",
+  "body": {
+    "stream_id": "s1",
+    "job_id": "job_01M45VGWW0NNYSESRJPP2BBRQN",
+    "url": "https://portal.example.org/download/9120",
+    "origin": "https://portal.example.org",
+    "range": { "offset": 402653184, "length": 16777216 },
+    "if_range": "\"5f3a9c-4c1d2e7b\"",
+    "request_headers": { "accept": "*/*" },
+    "chunk_bytes": 262144,
+    "credits": 8,
+    "deadline_ms": 25000
+  }
+}

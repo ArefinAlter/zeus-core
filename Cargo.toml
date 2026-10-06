@@ -1,0 +1,125 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/zeus-types",
+    "crates/zeus-control",
+    "crates/zeus-fs",
+    "crates/zeus-verify",
+    "crates/zeus-journal",
+    "crates/zeus-session",
+    "crates/zeus-http",
+    "crates/zeus-engine",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "Apache-2.0"
+repository = "https://github.com/ArefinAlter/zeus-core"
+homepage = "https://github.com/ArefinAlter/zeus"
+authors = ["Zeus contributors"]
+publish = false
+
+# `unsafe_code = "deny"` (not "forbid") lets the isolated platform FFI modules in zeus-fs opt in with a
+# commented `#[allow(unsafe_code)]`. Every other crate adds `#![forbid(unsafe_code)]` to its lib.rs.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "deny"
+unimplemented = "deny"
+print_stdout = "warn"
+print_stderr = "warn"
+
+# Versions verified against crates.io on 2026-10-05. Notes:
+# * redb 4.x needs rustc 1.90 (4.3.0 declares rust-version 1.90), which is why this workspace's MSRV is 1.90.
+# * Cargo resolves with the MSRV-aware resolver (resolver 3), so transitive dependencies stay MSRV-compatible.
+[workspace.dependencies]
+# ---- sibling crates in this workspace ----
+zeus-types = { path = "crates/zeus-types", version = "0.1.0" }
+zeus-control = { path = "crates/zeus-control", version = "0.1.0" }
+zeus-fs = { path = "crates/zeus-fs", version = "0.1.0" }
+zeus-verify = { path = "crates/zeus-verify", version = "0.1.0" }
+zeus-journal = { path = "crates/zeus-journal", version = "0.1.0" }
+zeus-session = { path = "crates/zeus-session", version = "0.1.0" }
+zeus-http = { path = "crates/zeus-http", version = "0.1.0" }
+zeus-engine = { path = "crates/zeus-engine", version = "0.1.0" }
+
+# ---- async runtime and utilities ----
+tokio = { version = "1.53", default-features = false }
+tokio-util = { version = "0.7", default-features = false }
+tokio-test = "0.4"
+futures = "0.3"
+async-trait = "0.1"
+bytes = "1.12"
+
+# ---- HTTP ----
+# TLS goes through rustls only. If aws-lc-sys is hard to build on a platform (windows-gnu), swap the
+# provider feature for ring (see docs/ARCHITECTURE.md, "HTTP stack").
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2", "stream"] }
+hyper = { version = "1.11", default-features = false }
+http = "1.5"
+url = { version = "2.5", features = ["serde"] }
+httpdate = "1.0"
+percent-encoding = "2.3"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+
+# ---- serialization, schemas ----
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = { version = "1.2", features = ["derive"] }
+# RFC 8785 (JCS). 0.3.x is maintained (2026-02); the in-tree fallback plan is only needed if its output
+# ever fails the RFC test vectors.
+serde_json_canonicalizer = "0.3"
+jsonschema = { version = "0.58", default-features = false }
+
+# ---- errors and logging ----
+thiserror = "2"
+tracing = "0.1"
+
+# ---- identifiers, time, text ----
+ulid = "3"
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+unicode-normalization = "0.1"
+
+# ---- storage ----
+redb = "4.3"
+crc32c = "0.6"
+
+# ---- crypto and secrets ----
+blake3 = "1.8"
+sha2 = "0.11"
+hex = "0.4"
+base64 = "0.23"
+rand = "0.10"
+zeroize = { version = "1.9", features = ["derive"] }
+
+# ---- platform and filesystem ----
+fs4 = "1.1"
+infer = "0.22"
+camino = "1.2"
+trash = "5.2"
+libc = "0.2"
+rustix = { version = "1", features = ["fs"] }
+xattr = "1.6"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO"] }
+
+# ---- test and bench only ----
+tempfile = "3.27"
+proptest = "1.11"
+criterion = { version = "0.8", default-features = false }
+divan = "0.1"
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

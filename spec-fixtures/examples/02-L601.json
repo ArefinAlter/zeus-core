@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "id": "e6",
+  "re": "d7",
+  "type": "url.refresh.response",
+  "body": {
+    "status": "refreshed",
+    "url": "https://portal.example.org/files/annual-report.pdf",
+    "final_url": "https://cdn.example.org/blobs/annual-report.pdf?X-Amz-Expires=300&X-Amz-Signature=FRESH-EXAMPLE",
+    "method": "refetch",
+    "validators": { "etag": "\"a81c-77e2\"", "last_modified": null },
+    "total_bytes": 734003200
+  }
+}

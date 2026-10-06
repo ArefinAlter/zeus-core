@@ -1,0 +1,33 @@
+[package]
+name = "zeus-types"
+description = "Zeus wire and domain types: identifiers, job state machine, errors, events, redaction."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[features]
+# Conformance-test helpers (JSON Schema validation against the copies of the normative schemas in
+# spec-fixtures/). Enable from [dev-dependencies] only.
+spec-testing = ["dep:jsonschema"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+thiserror.workspace = true
+ulid.workspace = true
+time.workspace = true
+url.workspace = true
+zeroize.workspace = true
+jsonschema = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest.workspace = true
+zeus-types = { path = ".", features = ["spec-testing"] }
+
+[lints]
+workspace = true

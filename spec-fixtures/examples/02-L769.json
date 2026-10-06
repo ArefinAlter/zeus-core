@@ -1,0 +1,1 @@
+{ "v": 1, "id": "d10", "type": "fetch.cancel", "body": { "stream_id": "s1", "reason": "job_canceled" } }

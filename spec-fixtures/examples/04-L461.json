@@ -1,0 +1,9 @@
+{
+  "@type": "cr:FileObject",
+  "@id": "reports/q3.csv.gz",
+  "name": "q3.csv.gz",
+  "contentUrl": "https://files.example.com/exports/2026/q3.csv.gz",
+  "encodingFormat": "application/gzip",
+  "sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a",
+  "contentSize": "1073741824 B"
+}

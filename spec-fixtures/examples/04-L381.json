@@ -1,0 +1,61 @@
+{
+  "prefix": {
+    "prov": "http://www.w3.org/ns/prov#",
+    "zeus": "https://zeus.invalid/ns#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#"
+  },
+  "entity": {
+    "zeus:file/eba4a8587ad422baa9bb314f660b11dfd73563c9af06c6c6ed6ec4bf2da2bc47": {
+      "prov:label": "dataset-v3.tar.zst",
+      "zeus:sha256": "eba4a8587ad422baa9bb314f660b11dfd73563c9af06c6c6ed6ec4bf2da2bc47",
+      "zeus:blake3": "1e0f07a3c0beca17e28b2d889c3e78a743e9c931e3d5efbff76921fe028ce231",
+      "zeus:size_bytes": { "$": "1288490188", "type": "xsd:long" },
+      "zeus:auditRecord": "chain_01M3TC5H007DRT2QA1P1NY311K#7"
+    },
+    "zeus:remote/7f3a91c2": {
+      "prov:label": "https://portal.example.org/download/8841",
+      "zeus:etag": "\"5f3a9c-4c1d2e7b\"",
+      "zeus:lastModified": "Tue, 29 Sep 2026 14:02:11 GMT"
+    }
+  },
+  "activity": {
+    "zeus:job/job_01M45NHJ2AHWMXT8JVJ7BEEJX7": {
+      "prov:startTime": "2026-10-05T09:15:30.250Z",
+      "prov:endTime": "2026-10-05T09:17:02.311Z",
+      "zeus:sourceKind": "browser_handoff",
+      "zeus:sessionOrigin": "https://portal.example.org"
+    }
+  },
+  "agent": {
+    "zeus:software/zeus-0.1.0": {
+      "prov:type": { "$": "prov:SoftwareAgent", "type": "prov:QUALIFIED_NAME" },
+      "prov:label": "Zeus 0.1.0"
+    }
+  },
+  "wasGeneratedBy": {
+    "_:g1": {
+      "prov:entity": "zeus:file/eba4a8587ad422baa9bb314f660b11dfd73563c9af06c6c6ed6ec4bf2da2bc47",
+      "prov:activity": "zeus:job/job_01M45NHJ2AHWMXT8JVJ7BEEJX7",
+      "prov:time": "2026-10-05T09:17:02.311Z"
+    }
+  },
+  "used": {
+    "_:u1": {
+      "prov:activity": "zeus:job/job_01M45NHJ2AHWMXT8JVJ7BEEJX7",
+      "prov:entity": "zeus:remote/7f3a91c2"
+    }
+  },
+  "wasAssociatedWith": {
+    "_:a1": {
+      "prov:activity": "zeus:job/job_01M45NHJ2AHWMXT8JVJ7BEEJX7",
+      "prov:agent": "zeus:software/zeus-0.1.0"
+    }
+  },
+  "wasDerivedFrom": {
+    "_:d1": {
+      "prov:generatedEntity": "zeus:file/eba4a8587ad422baa9bb314f660b11dfd73563c9af06c6c6ed6ec4bf2da2bc47",
+      "prov:usedEntity": "zeus:remote/7f3a91c2",
+      "prov:activity": "zeus:job/job_01M45NHJ2AHWMXT8JVJ7BEEJX7"
+    }
+  }
+}

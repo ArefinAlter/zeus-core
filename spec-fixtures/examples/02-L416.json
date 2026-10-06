@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "id": "d3",
+  "re": "e13",
+  "type": "handoff.reject",
+  "body": {
+    "error": {
+      "code": "handoff.not_eligible",
+      "class": "policy_denied",
+      "message": "The browser blocked this file as unsafe (FILE_BLOCKED); Zeus does not override security decisions.",
+      "retryable": false,
+      "details": { "interrupt_reason": "FILE_BLOCKED" }
+    }
+  }
+}

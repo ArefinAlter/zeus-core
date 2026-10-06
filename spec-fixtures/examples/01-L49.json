@@ -1,0 +1,78 @@
+{
+  "id": "job_01M45NHJ2AHWMXT8JVJ7BEEJX7",
+  "state": "downloading",
+  "quarantined": false,
+  "spec": {
+    "url": "https://portal.example.org/download/8841",
+    "hint_url": "https://cdn.example.org/blobs/dataset-v3.tar.zst?X-Amz-Signature=REDACTED-IN-DOCS",
+    "referrer": "https://portal.example.org/datasets/v3",
+    "filename": "dataset-v3.tar.zst",
+    "priority": "high",
+    "session_origin": "https://portal.example.org",
+    "grant_scope_hint": "site",
+    "overwrite": "rename",
+    "source": {
+      "kind": "browser_handoff",
+      "via": "native_messaging",
+      "client_id": "ext:chrome",
+      "browser": {
+        "name": "chrome",
+        "extension_id": "abcdefghijklmnopabcdefghijklmnop",
+        "download_id": 317,
+        "offer_key": "chrome:317:2026-10-05T09:15:12.004Z",
+        "incognito": false
+      }
+    }
+  },
+  "created_at": "2026-10-05T09:15:30.250Z",
+  "updated_at": "2026-10-05T09:16:10.000Z",
+  "state_since": "2026-10-05T09:15:36.640Z",
+  "probe": {
+    "probed_at": "2026-10-05T09:15:36.610Z",
+    "method": "range_get",
+    "transport": "direct",
+    "http_version": "h2",
+    "status": 206,
+    "final_url_redacted": "https://cdn.example.org/blobs/dataset-v3.tar.zst?…",
+    "redirects": 1,
+    "range_support": "verified",
+    "total_bytes": 1288490188,
+    "content_type": "application/zstd",
+    "content_encoding": null,
+    "filename": { "value": "dataset-v3.tar.zst", "source": "content_disposition" },
+    "validators": {
+      "etag": "\"5f3a9c-4c1d2e7b\"",
+      "last_modified": "Tue, 29 Sep 2026 14:02:11 GMT",
+      "last_modified_strong": true,
+      "repr_digest": null
+    },
+    "requires_session": true,
+    "interstitial_suspected": false
+  },
+  "progress": {
+    "bytes_done": 611057664,
+    "bytes_total": 1288490188,
+    "rate_ewma": 15728640,
+    "eta_s": 43,
+    "segments_active": 4,
+    "last_error_class": null,
+    "updated_at": "2026-10-05T09:16:10.000Z"
+  },
+  "retry": {
+    "attempt": 1,
+    "consecutive_failures": 0,
+    "last_progress_at": "2026-10-05T09:16:10.000Z",
+    "next_attempt_at": null,
+    "auth_refreshes": 0,
+    "proxy_escalations": 0,
+    "integrity_restarts": 0,
+    "resource_restarts": 0,
+    "recovery_count": 0,
+    "session_wait_deadline_at": null
+  },
+  "error": null,
+  "result": null,
+  "transport": "direct",
+  "grant_id": "gr_01M45NHPJP04TX6B1CJVQVQAK9",
+  "approval_id": "ap_01M45NHJ3XS0QXG9T42HHN2YR8"
+}

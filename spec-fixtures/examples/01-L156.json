@@ -1,0 +1,14 @@
+{
+  "url": "https://files.example.com/exports/2026/q3.csv.gz",
+  "referrer": null,
+  "dest_dir": "/home/ada/Downloads/Zeus",
+  "filename": "q3.csv.gz",
+  "expected_sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a",
+  "priority": "normal",
+  "idempotency_key": "agent-7f3c:q3-export",
+  "overwrite": "rename",
+  "max_connections": 8,
+  "transport_hint": "auto",
+  "labels": { "task": "quarterly-report" },
+  "source": { "kind": "agent", "via": "mcp", "client_id": "claude-code:3d9e", "run_id": "run_01M45KGHR0ED0WJDFXKG49029B" }
+}

@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "id": "e5",
+  "re": "d6",
+  "type": "session.response",
+  "body": {
+    "status": "consent_required",
+    "error": {
+      "code": "session.consent_required",
+      "class": "auth_expired",
+      "message": "No consent record covers gr_01M45NHPJP04TX6B1CJVQVQAK9 for https://portal.example.org.",
+      "retryable": true
+    }
+  }
+}

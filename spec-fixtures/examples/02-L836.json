@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "id": "e3",
+  "type": "approval.decide",
+  "body": {
+    "approval_id": "ap_01M45NHJ3XS0QXG9T42HHN2YR8",
+    "decision": "approve",
+    "scope": "site",
+    "ui": { "surface": "extension_popup", "user_gesture": true }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "id": "d1",
+  "re": "e1",
+  "type": "hello.ack",
+  "body": {
+    "protocol_version": 1,
+    "capabilities": ["handoff", "session", "url_refresh.refetch", "url_refresh.download_api", "fetch_proxy", "incognito", "approvals", "events", "job_control", "grants"],
+    "daemon": { "version": "0.1.0", "instance_id": "3f9a6c2d1b7e4a08c5d2e9f1a0b3c4d5" },
+    "host": { "version": "0.1.0" },
+    "connection_id": "conn_01M45NGARG09NTCP2S5QFQEN6J",
+    "limits": {
+      "max_frame_to_extension_bytes": 1000000,
+      "max_frame_to_daemon_bytes": 4194304,
+      "default_chunk_bytes": 262144,
+      "max_chunk_bytes": 2097152,
+      "default_credit_window": 8,
+      "max_credit_window": 32,
+      "max_concurrent_streams": 4,
+      "max_range_bytes": 16777216,
+      "ping_interval_ms": 20000,
+      "pong_timeout_ms": 5000,
+      "max_cookie_count": 150,
+      "max_session_ttl_ms": 900000
+    },
+    "server_time": "2026-10-05T09:14:50.120Z",
+    "head_seq": 48209
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "v": 1,
+  "id": "e11",
+  "type": "events.subscribe",
+  "body": { "since_seq": 48198, "include_progress": true, "progress_interval_ms": 1000, "scope": "all" }
+}

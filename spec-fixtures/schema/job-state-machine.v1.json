@@ -1,0 +1,103 @@
+{
+  "$comment": "Normative, machine-readable job state machine. docs/spec/01-domain-model.md section 7 is generated from this file by docs/spec/tools/gen-state-table.mjs; implementations SHOULD load it in tests (every row is a test case, every absent pair must be rejected).",
+  "version": 1,
+  "states": [
+    { "name": "queued", "terminal": false, "description": "Accepted, waiting for a scheduler slot." },
+    { "name": "probing", "terminal": false, "description": "Probe and resume validation in flight; no payload bytes are committed in this state." },
+    { "name": "awaiting_approval", "terminal": false, "description": "Blocked on a human decision (an Approval is pending)." },
+    { "name": "awaiting_session", "terminal": false, "description": "Blocked on session material, a fresh URL or the in-browser proxy from the extension; no human needed." },
+    { "name": "downloading", "terminal": false, "description": "Payload bytes are being fetched and committed." },
+    { "name": "paused", "terminal": false, "description": "Held by an explicit pause; resumes only on request." },
+    { "name": "retry_scheduled", "terminal": false, "description": "Waiting for next_attempt_at after a retryable error." },
+    { "name": "verifying", "terminal": false, "description": "All bytes committed; hashing and content checks." },
+    { "name": "finalizing", "terminal": false, "description": "Non-interruptible: OS marks, fsync, atomic rename, completion commit." },
+    { "name": "completed", "terminal": true, "description": "File is at its final path and verified. May carry quarantined=true." },
+    { "name": "failed", "terminal": false, "description": "Stopped with an error. Only a manual retry leaves this state." },
+    { "name": "canceled", "terminal": true, "description": "Stopped by request; partial data deleted." }
+  ],
+  "actors": {
+    "client": "Any authenticated client allowed to control jobs: CLI, TUI, MCP, A2A, extension popup.",
+    "human": "A human-only trust surface (extension popup, TUI, interactive CLI). Never an agent.",
+    "engine": "Daemon internals: scheduler, probe, transfer and verification tasks.",
+    "policy": "Policy evaluation inside the daemon (grants, never-list, roots).",
+    "system": "Timers and daemon startup recovery."
+  },
+  "transitions": [
+    { "id": "S01", "from": [null], "to": "queued", "trigger": "create", "actors": ["client"], "guard": "No approval needed (no session required, or an effective grant exists).", "events": ["job.created"] },
+    { "id": "S02", "from": [null], "to": "awaiting_approval", "trigger": "create", "actors": ["client"], "guard": "Approval needed at creation: browser_handoff without an effective grant, or enqueue naming session_origin without one.", "events": ["job.created", "approval.requested"] },
+
+    { "id": "S03", "from": ["queued"], "to": "probing", "trigger": "scheduler slot granted", "actors": ["engine"], "guard": "Global and per-host budget available; journal does not already cover every byte.", "events": ["job.state_changed"] },
+    { "id": "S04", "from": ["queued"], "to": "verifying", "trigger": "scheduler slot granted", "actors": ["engine"], "guard": "Journal shows every byte committed (resumption after a crash or a finalize retry).", "events": ["job.state_changed"] },
+    { "id": "S05", "from": ["queued"], "to": "paused", "trigger": "pause", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+    { "id": "S06", "from": ["queued"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+    { "id": "S07", "from": ["queued"], "to": "awaiting_approval", "trigger": "policy re-evaluation", "actors": ["policy"], "guard": "A grant the job depends on was revoked or expired while queued.", "events": ["job.state_changed", "approval.requested"] },
+    { "id": "S08", "from": ["queued"], "to": "failed", "trigger": "policy re-evaluation", "actors": ["policy"], "guard": "Origin is on the never-list or the destination violates the write roots (class policy_denied).", "events": ["job.state_changed", "job.failed"] },
+
+    { "id": "S10", "from": ["probing"], "to": "downloading", "trigger": "probe and resume validation succeeded", "actors": ["engine"], "guard": "Origin reachable; no session needed, or a valid lease is held.", "events": ["job.probed", "job.state_changed"] },
+    { "id": "S11", "from": ["probing"], "to": "awaiting_approval", "trigger": "probe shows session required", "actors": ["engine"], "guard": "requires_session and no effective grant covers the origin.", "events": ["job.probed", "job.state_changed", "approval.requested"] },
+    { "id": "S12", "from": ["probing"], "to": "awaiting_session", "trigger": "probe needs session material or proxy", "actors": ["engine"], "guard": "Effective grant exists but no valid lease, or class blocked with refresh/proxy budget left.", "events": ["job.probed", "job.state_changed", "session.refresh_needed"] },
+    { "id": "S13", "from": ["probing"], "to": "retry_scheduled", "trigger": "retryable error", "actors": ["engine"], "guard": "Class transient_network, throttled or disk(transient) and retry budget left; or class integrity with a restart budget left (ranges are invalidated first).", "events": ["job.state_changed", "job.retry_scheduled", "job.throttled"] },
+    { "id": "S14", "from": ["probing"], "to": "failed", "trigger": "terminal error", "actors": ["engine"], "guard": "Non-retryable class or retry budget exhausted.", "events": ["job.state_changed", "job.failed"] },
+    { "id": "S15", "from": ["probing"], "to": "paused", "trigger": "pause", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+    { "id": "S16", "from": ["probing"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+
+    { "id": "S20", "from": ["downloading"], "to": "verifying", "trigger": "all ranges committed", "actors": ["engine"], "guard": "Committed range set equals [0, total) (or EOF reached for unknown length).", "events": ["job.state_changed"] },
+    { "id": "S21", "from": ["downloading"], "to": "retry_scheduled", "trigger": "retryable error", "actors": ["engine"], "guard": "Class transient_network, throttled or disk(transient) and retry budget left; or class integrity with a restart budget left (ranges are invalidated first).", "events": ["job.state_changed", "job.retry_scheduled", "job.throttled"] },
+    { "id": "S22", "from": ["downloading"], "to": "awaiting_session", "trigger": "auth, URL or block failure", "actors": ["engine"], "guard": "Class auth_expired, url_expired or blocked with refresh/proxy budget left and an effective grant; or the extension connection carrying a browser_proxy transfer was lost.", "events": ["job.state_changed", "session.refresh_needed"] },
+    { "id": "S23", "from": ["downloading"], "to": "awaiting_approval", "trigger": "escalation to human", "actors": ["engine", "policy"], "guard": "Refresh budget exhausted, or the grant was revoked or expired mid-transfer.", "events": ["job.state_changed", "approval.requested"] },
+    { "id": "S24", "from": ["downloading"], "to": "paused", "trigger": "pause", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+    { "id": "S25", "from": ["downloading"], "to": "failed", "trigger": "terminal error", "actors": ["engine"], "guard": "Class permanent, integrity (budget spent), policy_denied, non-transient disk, blocked after a failed proxy attempt, or retry budget exhausted.", "events": ["job.state_changed", "job.failed"] },
+    { "id": "S26", "from": ["downloading"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+
+    { "id": "S30", "from": ["awaiting_approval"], "to": "queued", "trigger": "approval approved", "actors": ["human"], "guard": "Approval decision is approve and the approval has not expired. grant.created is emitted only when the decision creates a grant.", "events": ["approval.decided", "grant.created", "job.state_changed"] },
+    { "id": "S31", "from": ["awaiting_approval"], "to": "failed", "trigger": "approval denied or expired", "actors": ["human", "system"], "guard": "Decision deny, or approval deadline passed (class policy_denied). grant.created is emitted only when a deny decision also records a never grant.", "events": ["approval.decided", "grant.created", "job.state_changed", "job.failed"] },
+    { "id": "S32", "from": ["awaiting_approval"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "The pending approval is withdrawn (decision canceled, actor system).", "events": ["approval.decided", "job.state_changed"] },
+
+    { "id": "S40", "from": ["awaiting_session"], "to": "queued", "trigger": "material delivered", "actors": ["engine"], "guard": "Session lease, refreshed URL or proxy channel is now available.", "events": ["job.state_changed"] },
+    { "id": "S41", "from": ["awaiting_session"], "to": "awaiting_approval", "trigger": "consent missing", "actors": ["engine", "policy"], "guard": "Extension answered consent_required, or the grant was revoked or expired while waiting.", "events": ["job.state_changed", "approval.requested"] },
+    { "id": "S42", "from": ["awaiting_session"], "to": "failed", "trigger": "wait deadline or refresh impossible", "actors": ["engine", "system"], "guard": "session_wait deadline passed, or the extension answered cannot_refresh / proxy failure with class blocked.", "events": ["job.state_changed", "job.failed"] },
+    { "id": "S43", "from": ["awaiting_session"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+
+    { "id": "S50", "from": ["paused"], "to": "queued", "trigger": "resume", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+    { "id": "S51", "from": ["paused"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+
+    { "id": "S60", "from": ["retry_scheduled"], "to": "queued", "trigger": "next_attempt_at reached, or retry now", "actors": ["system", "client"], "guard": "", "events": ["job.state_changed"] },
+    { "id": "S61", "from": ["retry_scheduled"], "to": "paused", "trigger": "pause", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+    { "id": "S62", "from": ["retry_scheduled"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+
+    { "id": "S70", "from": ["verifying"], "to": "finalizing", "trigger": "verification passed", "actors": ["engine"], "guard": "Size, expected hash (if any) and content checks pass.", "events": ["job.verified", "job.quarantined", "job.state_changed"] },
+    { "id": "S71", "from": ["verifying"], "to": "retry_scheduled", "trigger": "integrity mismatch with restart budget, or transient disk error", "actors": ["engine"], "guard": "Mismatch and integrity restarts < 1, or class disk(transient). On a mismatch all ranges are invalidated first.", "events": ["job.state_changed", "job.retry_scheduled"] },
+    { "id": "S72", "from": ["verifying"], "to": "failed", "trigger": "integrity failure", "actors": ["engine"], "guard": "Mismatch and no restart budget, or non-transient disk error.", "events": ["job.state_changed", "job.failed"] },
+    { "id": "S73", "from": ["verifying"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "", "events": ["job.state_changed"] },
+
+    { "id": "S80", "from": ["finalizing"], "to": "completed", "trigger": "rename and completion commit done", "actors": ["engine"], "guard": "", "events": ["job.completed", "job.state_changed"] },
+    { "id": "S81", "from": ["finalizing"], "to": "retry_scheduled", "trigger": "transient disk error", "actors": ["engine"], "guard": "Sharing violation, destination directory missing, transient I/O error; retry budget left.", "events": ["job.state_changed", "job.retry_scheduled"] },
+    { "id": "S82", "from": ["finalizing"], "to": "failed", "trigger": "terminal disk error", "actors": ["engine"], "guard": "Permission denied, no space after retries, or destination outside write roots.", "events": ["job.state_changed", "job.failed"] },
+
+    { "id": "S90", "from": ["failed"], "to": "queued", "trigger": "manual retry", "actors": ["client"], "guard": "Journal data is kept; counters reset. A policy_denied job re-enters approval via S07 on the next evaluation.", "events": ["job.state_changed"] },
+
+    { "id": "S95", "from": ["probing", "downloading", "verifying", "finalizing"], "to": "queued", "trigger": "daemon startup recovery", "actors": ["system"], "guard": "recovery_count since last committed progress < 3.", "events": ["job.state_changed"] },
+    { "id": "S96", "from": ["probing", "downloading", "verifying", "finalizing"], "to": "failed", "trigger": "daemon startup recovery", "actors": ["system"], "guard": "recovery_count since last committed progress >= 3 (crash loop). Error engine.crash_loop, class internal.", "events": ["job.state_changed", "job.failed"] }
+  ],
+  "events": [
+    "job.created",
+    "job.state_changed",
+    "job.probed",
+    "job.progress",
+    "job.throttled",
+    "job.retry_scheduled",
+    "session.refresh_needed",
+    "session.leased",
+    "grant.created",
+    "grant.revoked",
+    "grant.expired",
+    "approval.requested",
+    "approval.decided",
+    "job.verified",
+    "job.quarantined",
+    "job.completed",
+    "job.failed",
+    "daemon.started",
+    "daemon.stopping"
+  ]
+}

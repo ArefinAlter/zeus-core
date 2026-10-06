@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "id": "e14",
+  "type": "handoff.withdraw",
+  "body": {
+    "job_id": "job_01M45NHJ2AHWMXT8JVJ7BEEJX7",
+    "offer_key": "chrome:317:2026-10-05T09:15:12.004Z",
+    "reason": "completed_in_browser"
+  }
+}

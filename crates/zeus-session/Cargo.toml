@@ -1,0 +1,33 @@
+[package]
+name = "zeus-session"
+description = "Session handoff for Zeus: the native-messaging protocol types and codec, consent, and the session and proxy-fetch provider traits."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+zeus-types.workspace = true
+zeus-control.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+base64.workspace = true
+bytes.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+url.workspace = true
+zeroize.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "io-util", "rt", "macros"] }
+
+[dev-dependencies]
+zeus-types = { workspace = true, features = ["spec-testing"] }
+tokio = { workspace = true, features = ["sync", "time", "io-util", "rt", "macros", "test-util"] }
+proptest.workspace = true
+
+[lints]
+workspace = true

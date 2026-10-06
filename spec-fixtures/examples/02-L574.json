@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "id": "d7",
+  "type": "url.refresh.request",
+  "body": {
+    "job_id": "job_01M45SSZ20WN6VYFYEM4GP8SZD",
+    "origin": "https://portal.example.org",
+    "origin_url": "https://portal.example.org/files/annual-report.pdf",
+    "stale_url": "https://cdn.example.org/blobs/annual-report.pdf?X-Amz-Expires=300&X-Amz-Signature=EXAMPLE",
+    "reason": "url_expired",
+    "methods": ["refetch", "download_api"],
+    "expected": { "total_bytes": 734003200, "etag": "\"a81c-77e2\"", "filename": "annual-report.pdf" },
+    "deadline_ms": 25000
+  }
+}

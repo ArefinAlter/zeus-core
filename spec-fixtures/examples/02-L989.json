@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "id": "d13",
+  "re": "e12",
+  "type": "job.list.response",
+  "body": {
+    "jobs": [
+      {
+        "id": "job_01M45NHJ2AHWMXT8JVJ7BEEJX7",
+        "state": "downloading",
+        "quarantined": false,
+        "source_kind": "browser_handoff",
+        "filename": "dataset-v3.tar.zst",
+        "url_redacted": "https://portal.example.org/download/8841",
+        "origin": "https://portal.example.org",
+        "bytes_done": 611057664,
+        "bytes_total": 1288490188,
+        "last_error": null,
+        "created_at": "2026-10-05T09:15:30.250Z",
+        "updated_at": "2026-10-05T09:16:10.000Z"
+      }
+    ],
+    "next_cursor": null
+  }
+}

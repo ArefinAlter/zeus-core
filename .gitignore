@@ -1,0 +1,27 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Local state, keys and secrets: never commit
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+.keys/
+*.token
+credentials/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Build outputs and test artefacts
+dist/
+*.zpart
+*.redb

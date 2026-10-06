@@ -1,0 +1,29 @@
+[package]
+name = "zeus-verify"
+description = "Integrity and provenance for Zeus: dual hashing, content checks, quarantine rules, the hash-chained audit log and the provenance manifest."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+zeus-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_json_canonicalizer.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+blake3.workspace = true
+hex.workspace = true
+infer.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

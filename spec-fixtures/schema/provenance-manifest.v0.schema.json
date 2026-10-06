@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeus.invalid/schema/provenance-manifest.v0",
+  "title": "Zeus provenance manifest v0",
+  "description": "One line of a provenance manifest (JSON Lines). The first line is a header, every other line describes one file. Normative text: docs/spec/04-audit-log-and-provenance.md. v0 means: additive changes allowed without a version bump, consumers MUST ignore unknown properties.",
+  "$defs": {
+    "RelPath": {
+      "description": "Path relative to the manifest root, POSIX separators, no drive letters, no .. segments, no control characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[^\\\\:\\u0000-\\u001f]+$"
+    },
+    "Header": {
+      "type": "object",
+      "required": ["record_type", "manifest_version", "created_at", "generator", "privacy", "hash_algorithms"],
+      "properties": {
+        "record_type": { "const": "header" },
+        "manifest_version": { "const": 0 },
+        "created_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "generator": {
+          "type": "object",
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "zeus" },
+            "version": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" }
+          }
+        },
+        "run_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" },
+        "root_label": { "type": "string", "maxLength": 256 },
+        "privacy": {
+          "type": "object",
+          "required": ["url_query", "session_origin_included", "os_metadata"],
+          "properties": {
+            "url_query": { "enum": ["dropped", "sanitized"] },
+            "session_origin_included": { "type": "boolean" },
+            "os_metadata": { "enum": ["off", "mark_only", "full"] }
+          }
+        },
+        "hash_algorithms": {
+          "type": "array",
+          "items": { "enum": ["sha256", "blake3"] },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "ConverterStep": {
+      "type": "object",
+      "required": ["tool", "version", "input_sha256", "output_sha256"],
+      "properties": {
+        "tool": { "type": "string", "maxLength": 64 },
+        "version": { "type": "string", "maxLength": 64 },
+        "input_sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "output_sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "args_digest": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" }
+      }
+    },
+    "FileRecord": {
+      "type": "object",
+      "required": ["record_type", "path", "size_bytes", "sha256", "blake3", "source", "retrieved_at", "session_origin", "tools", "license", "job_id", "quarantined", "audit"],
+      "properties": {
+        "record_type": { "const": "file" },
+        "path": { "$ref": "#/$defs/RelPath" },
+        "size_bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "blake3": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "media_type": { "type": ["string", "null"], "maxLength": 255 },
+        "declared_media_type": { "type": ["string", "null"], "maxLength": 255 },
+        "source": {
+          "type": "object",
+          "required": ["kind", "url", "final_url", "url_redacted"],
+          "properties": {
+            "kind": { "$ref": "https://zeus.invalid/schema/domain#/$defs/SourceKind" },
+            "url": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+            "final_url": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+            "url_redacted": { "type": "boolean", "description": "True when the redaction function removed or masked anything." },
+            "referrer": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" }
+          }
+        },
+        "retrieved_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "session_origin": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Origin" }, { "type": "null" }] },
+        "http": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+            "etag": { "type": ["string", "null"], "maxLength": 512 },
+            "last_modified": { "type": ["string", "null"], "maxLength": 64 },
+            "date": { "type": ["string", "null"], "maxLength": 64 },
+            "repr_digest": { "type": ["string", "null"], "maxLength": 512 }
+          }
+        },
+        "tools": {
+          "type": "object",
+          "required": ["zeus"],
+          "properties": {
+            "zeus": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" },
+            "engine": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" },
+            "extension": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" }
+          }
+        },
+        "converter_chain": { "type": "array", "items": { "$ref": "#/$defs/ConverterStep" } },
+        "license": {
+          "type": "object",
+          "required": ["spdx", "source"],
+          "properties": {
+            "spdx": { "type": "string", "maxLength": 128, "description": "SPDX license expression, a LicenseRef-* identifier, or the literal unknown." },
+            "source": { "enum": ["unknown", "declared", "detected", "user"] },
+            "evidence_url": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" }
+          }
+        },
+        "run_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" }, { "type": "null" }] },
+        "job_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "quarantined": { "type": "boolean" },
+        "os_metadata": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["zone_identifier", "quarantine_xattr", "where_froms", "xdg_origin_url", "xdg_referrer_url"] }
+        },
+        "derived_from": {
+          "type": "array",
+          "items": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+          "description": "SHA-256 values of the input files of the converter chain."
+        },
+        "audit": {
+          "type": "object",
+          "required": ["chain_id", "seq", "hash"],
+          "properties": {
+            "chain_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/ChainId" },
+            "seq": { "type": "integer", "minimum": 1 },
+            "hash": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" }
+          }
+        }
+      }
+    },
+    "ManifestLine": {
+      "oneOf": [{ "$ref": "#/$defs/Header" }, { "$ref": "#/$defs/FileRecord" }]
+    }
+  }
+}

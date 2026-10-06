@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "id": "e7",
+  "re": "d8",
+  "type": "fetch.head",
+  "body": {
+    "stream_id": "s1",
+    "status": 206,
+    "final_url": "https://cdn.example.org/blobs/dataset-v3.tar.zst?X-Amz-Expires=300&X-Amz-Signature=EXAMPLE",
+    "redirected": true,
+    "headers": {
+      "content-range": "bytes 402653184-419430399/1288490188",
+      "content-length": "16777216",
+      "etag": "\"5f3a9c-4c1d2e7b\"",
+      "accept-ranges": "bytes",
+      "content-type": "application/zstd"
+    }
+  }
+}

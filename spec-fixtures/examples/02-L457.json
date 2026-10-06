@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "id": "d6",
+  "type": "session.request",
+  "body": {
+    "job_id": "job_01M45NHJ2AHWMXT8JVJ7BEEJX7",
+    "session_id": "sess_01M45NHQTC78XWWC8N35Y2BPEA",
+    "grant_id": "gr_01M45NHPJP04TX6B1CJVQVQAK9",
+    "origin": "https://portal.example.org",
+    "url": "https://portal.example.org/download/8841",
+    "purpose": "download",
+    "request_headers": ["accept-language", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform"],
+    "ttl_ms": 900000,
+    "incognito": false
+  }
+}

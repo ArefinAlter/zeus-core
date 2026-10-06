@@ -1,0 +1,9 @@
+{
+  "bytes_done": 611057664,
+  "bytes_total": 1288490188,
+  "rate_ewma": 15728640,
+  "eta_s": 43,
+  "segments_active": 4,
+  "last_error_class": null,
+  "updated_at": "2026-10-05T09:16:10.000Z"
+}

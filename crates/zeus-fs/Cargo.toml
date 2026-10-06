@@ -1,0 +1,33 @@
+[package]
+name = "zeus-fs"
+description = "File-system correctness primitives for Zeus: safe roots, name sanitising, positional I/O, atomic finalize, provenance marks, trash."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+zeus-types.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+unicode-normalization.workspace = true
+fs4.workspace = true
+trash.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+xattr.workspace = true
+rustix.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true
