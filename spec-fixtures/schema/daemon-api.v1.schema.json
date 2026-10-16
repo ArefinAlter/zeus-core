@@ -5776,6 +5776,350 @@
           }
         }
       ]
+    },
+    "CloudAccountsConfigureParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountsConfigureParams"
+    },
+    "CloudAccountsConfigureResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountMutationResult"
+    },
+    "CloudAccountsConfigureRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.accounts.configure"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudAccountsConfigureParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudAccountsConfigureResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudAccountsConfigureResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudAccountsListParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountsListParams"
+    },
+    "CloudAccountsListResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountsListResult"
+    },
+    "CloudAccountsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.accounts.list"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudAccountsListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudAccountsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudAccountsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudAccountsRevokeParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountsRevokeParams"
+    },
+    "CloudAccountsRevokeResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountMutationResult"
+    },
+    "CloudAccountsRevokeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.accounts.revoke"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudAccountsRevokeParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudAccountsRevokeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudAccountsRevokeResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudControlParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudControlParams"
+    },
+    "CloudControlResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudMutationResult"
+    },
+    "CloudControlRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.control"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudControlParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudControlResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudControlResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudGetParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudGetParams"
+    },
+    "CloudGetResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudDeliveryView"
+    },
+    "CloudGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.get"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudGetParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudListParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudListParams"
+    },
+    "CloudListResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudListResult"
+    },
+    "CloudListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.list"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudListResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudPlanParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudPlanParams"
+    },
+    "CloudPlanResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudPlanResult"
+    },
+    "CloudPlanRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.plan"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudPlanParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudPlanResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudPlanResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudSubmitParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudSubmitParams"
+    },
+    "CloudSubmitResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudMutationResult"
+    },
+    "CloudSubmitRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.submit"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudSubmitParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudSubmitResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudSubmitResult"
+            }
+          }
+        }
+      ]
     }
   }
 }

@@ -1,5 +1,1 @@
-{
-  "dry_run": true,
-  "jobs": [{ "approval_needed": false, "untrusted_planned_path": "/home/ada/Downloads/Zeus/report (1).pdf" }],
-  "note": "Dry run: nothing was created. Call again with dry_run false and the same idempotency_key to start."
-}
+{ "urls": ["https://files.example.com/a/report.pdf"], "dry_run": true, "idempotency_key": "q3-report-001" }

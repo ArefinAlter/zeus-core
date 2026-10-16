@@ -1,0 +1,7 @@
+{
+  "idempotency_key": "research-cloud-submit-1",
+  "request": {
+    "action": "submit", "plan_id": "clp_01M48AKW2RDVBCR29C5HZ0ZD6Y",
+    "plan_hash": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a"
+  }
+}

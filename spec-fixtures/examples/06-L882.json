@@ -1,10 +1,1 @@
-{
-  "job": {
-    "job_id": "job_01M48AKWFKNPPFAG5Y2HNT1ZCR",
-    "state": "queued",
-    "bytes_done": 104857600,
-    "bytes_total": 524288000,
-    "quarantined": false,
-    "error": { "code": "net.read_timeout", "class": "transient_network", "retryable": true }
-  }
-}
+{ "job_id": "job_01M48AKWFKNPPFAG5Y2HNT1ZCR", "action": "retry", "idempotency_key": "retry-q4-export-1" }

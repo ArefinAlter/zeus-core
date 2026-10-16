@@ -292,6 +292,11 @@
           "const": "destructive_op",
           "description": "A file operation that deletes or overwrites.",
           "type": "string"
+        },
+        {
+          "const": "cloud_delivery",
+          "description": "One exact source, cloud account revision, destination, mode and budget.",
+          "type": "string"
         }
       ]
     },

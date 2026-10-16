@@ -7,5 +7,6 @@
   "zeus_verify": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
   "zeus_session_list": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
   "zeus_session_request": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
-  "zeus_files_list": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+  "zeus_files_list": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+  "zeus_cloud": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true }
 }

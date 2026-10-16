@@ -334,6 +334,8 @@ pub enum ApprovalKind {
     WorkflowPlan,
     /// A file operation that deletes or overwrites.
     DestructiveOp,
+    /// One exact source, cloud account revision, destination, mode and budget.
+    CloudDelivery,
 }
 
 impl ApprovalKind {
@@ -349,7 +351,10 @@ impl ApprovalKind {
                 GrantScope::Never,
             ],
             Self::WorkflowPlan => &[GrantScope::Workflow],
-            Self::RetryEscalation | Self::PolicyException | Self::DestructiveOp => &[],
+            Self::RetryEscalation
+            | Self::PolicyException
+            | Self::DestructiveOp
+            | Self::CloudDelivery => &[],
         }
     }
 
@@ -358,9 +363,11 @@ impl ApprovalKind {
     pub const fn default_expiry_ms(self) -> u64 {
         match self {
             Self::RetryEscalation | Self::WorkflowPlan => 604_800_000,
-            Self::Handoff | Self::SessionGrant | Self::PolicyException | Self::DestructiveOp => {
-                86_400_000
-            }
+            Self::Handoff
+            | Self::SessionGrant
+            | Self::PolicyException
+            | Self::DestructiveOp
+            | Self::CloudDelivery => 86_400_000,
         }
     }
 }

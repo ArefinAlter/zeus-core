@@ -15,7 +15,8 @@
         "zeus_verify",
         "zeus_session_list",
         "zeus_session_request",
-        "zeus_files_list"
+        "zeus_files_list",
+        "zeus_cloud"
       ]
     },
     "LaterToolName": {
@@ -73,6 +74,8 @@
         "free_disk_space",
         "fix_destination",
         "check_url",
+        "review_plan",
+        "inspect_delivery",
         "none"
       ]
     },
@@ -495,6 +498,200 @@
       "anyOf": [{ "$ref": "#/$defs/FilesListOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
 
+    "CloudInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "idempotency_key",
+        "request"
+      ],
+      "properties": {
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "request": {
+          "$ref": "#/$defs/CloudRequest"
+        }
+      }
+    },
+    "CloudRequest": {
+      "description": "Six closed action shapes. Plan bounds and provider capabilities are validated by the daemon; no account mutations or permission decisions.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "const": "accounts"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "account_id",
+            "mode",
+            "source",
+            "remote_name",
+            "max_bytes",
+            "max_seconds"
+          ],
+          "properties": {
+            "action": {
+              "const": "plan"
+            },
+            "account_id": {
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/DeliveryMode"
+            },
+            "source": {
+              "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudSource"
+            },
+            "remote_name": {
+              "type": "string"
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_seconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "allow_unbounded_remote": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "plan_id",
+            "plan_hash"
+          ],
+          "properties": {
+            "action": {
+              "const": "submit"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "plan_hash": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "const": "list"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "default": 20
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "delivery_id"
+          ],
+          "properties": {
+            "action": {
+              "const": "get"
+            },
+            "delivery_id": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "delivery_id",
+            "operation"
+          ],
+          "properties": {
+            "action": {
+              "const": "control"
+            },
+            "delivery_id": {
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "pause",
+                "resume",
+                "cancel"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "CloudOutput": {
+      "type": "object",
+      "required": [
+        "operation",
+        "untrusted_data",
+        "next"
+      ],
+      "properties": {
+        "operation": {
+          "enum": [
+            "accounts",
+            "plan",
+            "submit",
+            "list",
+            "get",
+            "control"
+          ]
+        },
+        "untrusted_data": {
+          "type": "object",
+          "description": "Typed public response of the mapped cloud method (spec14), including all nested provider strings as untrusted data. Private upload URLs, source queries, credentials and local config paths are excluded.",
+          "additionalProperties": true
+        },
+        "next": {
+          "$ref": "#/$defs/NextStep"
+        }
+      }
+    },
+    "CloudResult": {
+      "type": "object",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CloudOutput"
+        },
+        {
+          "$ref": "#/$defs/ToolError"
+        }
+      ]
+    },
+
     "ToolHints": {
       "description": "The four MCP behaviour hints. Zeus always sends all four (06 section 6).",
       "type": "object",
@@ -530,7 +727,8 @@
         "zeus_verify",
         "zeus_session_list",
         "zeus_session_request",
-        "zeus_files_list"
+        "zeus_files_list",
+        "zeus_cloud"
       ],
       "properties": {
         "zeus_probe": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true } },
@@ -541,7 +739,8 @@
         "zeus_verify": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
         "zeus_session_list": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
         "zeus_session_request": { "const": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
-        "zeus_files_list": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } }
+        "zeus_files_list": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
+        "zeus_cloud": { "const": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true } }
       }
     },
     "ToolDefinition": {

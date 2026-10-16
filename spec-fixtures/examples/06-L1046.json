@@ -1,15 +1,1 @@
-{
-  "files": [
-    {
-      "untrusted_path": "/home/ada/Downloads/Zeus/q3.csv.gz",
-      "size_bytes": 48213,
-      "modified_at": "2026-10-06T10:03:40.512Z",
-      "quarantined": false,
-      "sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a",
-      "job_id": "job_01M48AKW2RDVBCR29C5HZ0ZD6Y",
-      "untrusted_url": "https://files.example.com/exports/2026/q3.csv.gz"
-    },
-    { "untrusted_path": "/home/ada/Downloads/Zeus/reports/2026/notes.txt", "size_bytes": 912, "modified_at": "2026-10-04T18:22:05.000Z", "quarantined": false }
-  ],
-  "next_cursor": "f2.cmVwb3J0cy8yMDI2L25vdGVzLnR4dA"
-}
+{ "recursive": true, "limit": 2 }

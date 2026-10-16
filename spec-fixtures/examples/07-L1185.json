@@ -1,1 +1,1 @@
-{ "engaged": true, "changed": true, "grants_revoked": 3, "jobs_paused": 5, "approvals_pending": 2 }
+{ "action": "engage", "surface": "tui", "reason": "Agent tried to rename my thesis folder" }

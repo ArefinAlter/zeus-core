@@ -1,10 +1,1 @@
-{
-  "job_id": "job_01M48AKW2RDVBCR29C5HZ0ZD6Y",
-  "sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a",
-  "size_bytes": 48213,
-  "matches_recorded": true,
-  "matches_expected": true,
-  "quarantined": false,
-  "quarantine_reasons": [],
-  "untrusted_detected_type": "application/gzip"
-}
+{ "job_id": "job_01M48AKW2RDVBCR29C5HZ0ZD6Y", "expected_sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a" }

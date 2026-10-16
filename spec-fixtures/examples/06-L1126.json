@@ -1,0 +1,4 @@
+{
+  "operation": "accounts", "untrusted_data": { "accounts": [] },
+  "next": { "action": "none" }
+}
