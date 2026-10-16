@@ -2859,6 +2859,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "zeus-artifact"
+version = "0.1.0"
+dependencies = [
+ "jsonschema",
+ "redb",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "zeus-control",
+ "zeus-fs",
+ "zeus-types",
+ "zeus-verify",
+]
+
+[[package]]
 name = "zeus-control"
 version = "0.1.0"
 dependencies = [
@@ -2876,7 +2892,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "crc32c",
  "futures",
+ "http",
  "serde",
  "serde_json",
  "tempfile",
@@ -2901,6 +2919,7 @@ dependencies = [
  "proptest",
  "rustix",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tracing",
@@ -2921,6 +2940,7 @@ dependencies = [
  "futures",
  "http",
  "httpdate",
+ "percent-encoding",
  "proptest",
  "reqwest",
  "serde_json",

@@ -4,10 +4,9 @@
 //! generator directly: time comes from an injected [`Clock`] (or an explicit monotonic argument) and
 //! randomness from a [`RandomSource`]. That makes every algorithm exactly reproducible in tests.
 //!
-//! Implemented in the skeleton: [`Clock`], [`RandomSource`], [`RangeSet`] (the committed-range
-//! interval set of 03 section 3.4), [`Backoff`] (01 section 8.5) and [`Ewma`]. The remaining modules
-//! define the final API and return [`ControlError::NotImplemented`] until the `zeus-control`
-//! implementation task fills them in.
+//! Implemented modules include clocks, randomness, ranges, backoff, EWMA, AIMD, segment planning,
+//! limiters and fairness. Advanced estimators, mirror selection, hedging, reliability math and CUSUM
+//! still expose typed `NotImplemented` results; the engine does not depend on them for basic transfers.
 
 #![forbid(unsafe_code)]
 

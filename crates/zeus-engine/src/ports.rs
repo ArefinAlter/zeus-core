@@ -15,6 +15,10 @@ use zeus_types::{
 /// What the engine asks the daemon to put in front of a human.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApprovalRequest {
+    /// Authoritative engine snapshot for daemon-computed approval facts, before initial persistence.
+    pub job: Option<zeus_types::Job>,
+    /// Canonical reserved final destination, including collision resolution.
+    pub dest_path: Option<String>,
     /// What is being asked.
     pub kind: ApprovalKind,
     /// The job concerned.
@@ -41,6 +45,26 @@ pub trait ApprovalPort: Send + Sync {
 
     /// Withdraws a pending approval because its job was canceled (decision `cancel`, actor `system`).
     async fn withdraw(&self, approval_id: ApprovalId) -> Result<(), ErrorEnvelope>;
+}
+
+/// Per-job network policy supplied by an embedding that runs workflows.
+/// The returned transport must enforce approved host boundaries, robots and connected-peer policy
+/// on every request, including redirects and range retries.
+pub trait JobTransportFactory: Send + Sync {
+    /// Construct a scoped transport. None is allowed only for ordinary, non-workflow downloads.
+    fn for_job(
+        &self,
+        spec: &zeus_types::JobSpec,
+    ) -> Result<Option<std::sync::Arc<dyn zeus_http::HttpTransport>>, ErrorEnvelope>;
+    /// Enforce run-wide commit budgets while the journal writer excludes concurrent commits.
+    fn validate_commit(
+        &self,
+        _spec: &zeus_types::JobSpec,
+        _txn: &dyn zeus_journal::ReadTxn,
+        _range: zeus_types::ByteRange,
+    ) -> Result<(), ErrorEnvelope> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -4,10 +4,6 @@
 //!
 //! These attributes are a convenience for other software. Zeus never *reads* them as provenance: any
 //! program can edit them. The manifest and the audit log are the record.
-#![expect(
-    unused_variables,
-    reason = "skeleton: bodies are filled in by the zeus-fs implementation task"
-)]
 
 use std::path::Path;
 
@@ -56,7 +52,52 @@ impl ProvenanceMarker for NativeMarker {
         marks: &ProvenanceMarks,
         mode: OsMetadataMode,
     ) -> FsResult<Vec<OsMetadataKind>> {
-        Err(FsError::NotImplemented("NativeMarker::apply"))
+        if mode == OsMetadataMode::Off {
+            return Ok(Vec::new());
+        }
+        if !crate::Filesystem::metadata(&crate::RealFs, path)?.is_some_and(|m| m.is_regular_file) {
+            return Err(FsError::SymlinkRefused);
+        }
+        #[cfg(windows)]
+        {
+            use std::io::Write;
+            let mut stream = path.as_os_str().to_os_string();
+            stream.push(":Zone.Identifier");
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(std::path::PathBuf::from(stream))?;
+            file.write_all(
+                zone_identifier_text(marks, mode)
+                    .unwrap_or_default()
+                    .as_bytes(),
+            )?;
+            file.sync_all()?;
+            Ok(vec![OsMetadataKind::ZoneIdentifier])
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let quarantine = format!("0083;{:08x};Zeus;", marks.retrieved_at_unix_s);
+            xattr::set(path, "com.apple.quarantine", quarantine.as_bytes())?;
+            // Quarantine is always written; URL-bearing Finder plist support is separate.
+            Ok(vec![OsMetadataKind::QuarantineXattr])
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let mut written = Vec::new();
+            if mode == OsMetadataMode::Full {
+                if let Some(url) = &marks.origin_url {
+                    xattr::set(path, "user.xdg.origin.url", url.to_string().as_bytes())?;
+                    written.push(OsMetadataKind::XdgOriginUrl);
+                }
+                if let Some(url) = &marks.referrer_url {
+                    xattr::set(path, "user.xdg.referrer.url", url.to_string().as_bytes())?;
+                    written.push(OsMetadataKind::XdgReferrerUrl);
+                }
+            }
+            Ok(written)
+        }
     }
 }
 

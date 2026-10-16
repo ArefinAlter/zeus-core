@@ -9,6 +9,7 @@ members = [
     "crates/zeus-session",
     "crates/zeus-http",
     "crates/zeus-engine",
+    "crates/zeus-artifact",
 ]
 
 [workspace.package]
@@ -47,6 +48,7 @@ zeus-journal = { path = "crates/zeus-journal", version = "0.1.0" }
 zeus-session = { path = "crates/zeus-session", version = "0.1.0" }
 zeus-http = { path = "crates/zeus-http", version = "0.1.0" }
 zeus-engine = { path = "crates/zeus-engine", version = "0.1.0" }
+zeus-artifact = { path = "crates/zeus-artifact", version = "0.1.0" }
 
 # ---- async runtime and utilities ----
 tokio = { version = "1.53", default-features = false }

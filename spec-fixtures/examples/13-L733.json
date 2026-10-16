@@ -1,0 +1,46 @@
+{
+  "artifact_version": 1,
+  "id": "art_01M4A3B8XK5PRZ2W9D0NQ7TCGF",
+  "store_id": "01M4A2ZQ8E5W3N7K1V0T6RJYXB",
+  "state": "active",
+  "created_at": "2026-10-06T08:00:07.410Z",
+  "sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a",
+  "blake3": "c3a07f73ec4e30b696bc8c5659e85461b00c76674eaeaa02ef12f6b8c83571ec",
+  "size_bytes": 1073741824,
+  "object": { "algorithm": "blake3", "digest": "c3a07f73ec4e30b696bc8c5659e85461b00c76674eaeaa02ef12f6b8c83571ec", "size_bytes": 1073741824, "state": "present" },
+  "name": "q3.csv.gz",
+  "media_type": "application/gzip",
+  "declared_media_type": "application/gzip",
+  "origin": {
+    "kind": "remote",
+    "url": "https://files.example.com/exports/2026/q3.csv.gz",
+    "final_url": "https://files.example.com/exports/2026/q3.csv.gz",
+    "url_redacted": false,
+    "session_origin": null,
+    "http": { "status": 200, "etag": null, "last_modified": "Fri, 02 Oct 2026 06:00:00 GMT", "date": "Mon, 05 Oct 2026 10:02:12 GMT", "repr_digest": null }
+  },
+  "retrieved_at": "2026-10-05T10:19:41.000Z",
+  "produced_at": null,
+  "producer": { "product": "zeus", "version": "0.1.0", "engine": "0.1.0", "source_kind": "agent" },
+  "operation": { "name": "zeus.download", "version": "0.1.0", "params_blake3": "b058007fd5c592f4b0afb2803d88cdd9db2a855d2d18924d46c43a388f84e4d5" },
+  "parents": [],
+  "job_id": "job_01M45R71NCNH3W8EQ63TAFME4C",
+  "run_id": "run_01M45KGHR0ED0WJDFXKG49029B",
+  "license": { "spdx": "CC-BY-4.0", "source": "declared", "evidence_url": "https://files.example.com/exports/2026/LICENSE" },
+  "quarantined": false,
+  "verification": { "state": "verified", "checked_at": "2026-10-06T08:00:07.410Z", "basis": "expected" },
+  "retention": "keep",
+  "retain_until": null,
+  "imports": [
+    {
+      "imported_at": "2026-10-06T08:00:07.410Z",
+      "from": { "product": "zeus", "store_id": "01M2YVJ3K8W5D0QXNB7RT4CHAE", "artifact_id": "art_01M45SDP4G6YB0QW8ZK3NXJ7RT" },
+      "via": "api",
+      "object_mode": "copy",
+      "verified": true,
+      "record_blake3": "7d0e0061dfaf50b12b96f3cad4aece3fbf6a344ac46b0675a68bdde9e7e1f889"
+    }
+  ],
+  "privacy": { "url_query": "dropped", "session_origin_included": false },
+  "metadata": { "task": "quarterly-report" }
+}

@@ -1,0 +1,7 @@
+{
+  "code": "api.not_found",
+  "class": "not_found",
+  "message": "No such job is visible to this client.",
+  "retryable": false,
+  "next": { "action": "none", "tool": "zeus_status" }
+}

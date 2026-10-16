@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":32,"error":{"code":-32602,"message":"Invalid parameters for jobs.enqueue: unknown header name in extra_headers.","data":{"code":"api.invalid_params","class":"invalid_request","message":"Invalid parameters for jobs.enqueue: unknown header name in extra_headers.","retryable":false,"details":{"fields":["jobs[0].extra_headers"]}}}}

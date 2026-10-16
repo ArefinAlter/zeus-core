@@ -1,0 +1,6 @@
+{
+  "origin": "https://portal.example.org",
+  "scope": "site",
+  "reason": "The quarterly reports you asked for are behind this portal's login.",
+  "idempotency_key": "portal-session-2026-10-06"
+}

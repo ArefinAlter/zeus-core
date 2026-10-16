@@ -306,6 +306,7 @@ error_codes! {
     INTEGRITY_RANGE_OVERRUN = "integrity.range_overrun", Integrity, true;
     INTEGRITY_TAIL_CHECK_FAILED = "integrity.tail_check_failed", Integrity, true;
     // policy
+    POLICY_KILL_SWITCH_ENGAGED = "policy.kill_switch_engaged", PolicyDenied, false;
     POLICY_ORIGIN_NEVER = "policy.origin_never", PolicyDenied, false;
     POLICY_APPROVAL_DENIED = "policy.approval_denied", PolicyDenied, false;
     POLICY_APPROVAL_EXPIRED = "policy.approval_expired", PolicyDenied, false;
@@ -314,11 +315,28 @@ error_codes! {
     POLICY_ROBOTS_DISALLOWED = "policy.robots_disallowed", PolicyDenied, false;
     POLICY_QUARANTINE_BLOCKED = "policy.quarantine_blocked", PolicyDenied, false;
     POLICY_TOO_MANY_PENDING = "policy.too_many_pending", Unavailable, true;
+    // 13 section 17: content-addressed artifact store
+    ARTIFACT_NOT_FOUND = "artifact.not_found", NotFound, false;
+    ARTIFACT_OBJECT_ABSENT = "artifact.object_absent", NotFound, false;
+    ARTIFACT_OBJECT_DAMAGED = "artifact.object_damaged", Integrity, false;
+    ARTIFACT_DIGEST_MISMATCH = "artifact.digest_mismatch", Integrity, false;
+    ARTIFACT_QUOTA_EXCEEDED = "artifact.quota_exceeded", Disk, false;
+    ARTIFACT_STORE_LOCKED = "artifact.store_locked", Conflict, false;
+    ARTIFACT_VERSION_UNSUPPORTED = "artifact.version_unsupported", Unsupported, false;
+    ARTIFACT_STORE_CORRUPT = "artifact.store_corrupt", Internal, false;
+    ARTIFACT_STORE_LOCATION_UNSUITABLE = "artifact.store_location_unsuitable", InvalidRequest, false;
+    ARTIFACT_RECORD_INVALID = "artifact.record_invalid", InvalidRequest, false;
+    ARTIFACT_LINEAGE_INVALID = "artifact.lineage_invalid", InvalidRequest, false;
+    ARTIFACT_IMPORT_CONFLICT = "artifact.import_conflict", Conflict, false;
+    ARTIFACT_MATERIALIZE_UNSUPPORTED = "artifact.materialize_unsupported", Unsupported, false;
     // engine, api
     ENGINE_CRASH_LOOP = "engine.crash_loop", Internal, false;
     ENGINE_SHUTDOWN = "engine.shutdown", Unavailable, true;
+    API_INVALID_PARAMS = "api.invalid_params", InvalidRequest, false;
+    WORKFLOW_BUDGET_EXHAUSTED = "workflow.budget_exhausted", PolicyDenied, false;
     API_IDEMPOTENCY_CONFLICT = "api.idempotency_conflict", Conflict, false;
     API_NOT_FOUND = "api.not_found", NotFound, false;
+    API_HUMAN_REQUIRED = "api.human_required", PolicyDenied, false;
     API_INVALID_TRANSITION = "api.invalid_transition", Conflict, false;
     API_NOT_INTERRUPTIBLE = "api.not_interruptible", Conflict, true;
     // 02 section 14: native messaging
@@ -670,6 +688,8 @@ mod tests {
             "nm",
             "journal",
             "audit",
+            "artifact",
+            "workflow",
             "engine",
             "api",
             "internal",

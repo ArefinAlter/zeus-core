@@ -1,0 +1,21 @@
+{
+  "approval_id": "ap_01M465YFSGE0S6JG9A0WZWQ2F2",
+  "revision": 2,
+  "request_hash": "e597f6a196cf33172c91da16f2047d995f681858602741c00414358a0b5302b7",
+  "outcome": "approve",
+  "scope": "once",
+  "actor": { "kind": "human", "surface": "cli_interactive", "client_id": "cli_01M3V7ME01HNR0ATMA0D0XY9CW" },
+  "decided_at": "2026-10-05T14:03:02.310Z",
+  "grant_ids": ["gr_01M46601S6FRJ8B3Z889X861XE", "gr_01M46601S6ATDHX8RHW753JHHV"],
+  "evidence": {
+    "surface": "cli_interactive",
+    "role": "cli",
+    "client_id": "cli_01M3V7ME01HNR0ATMA0D0XY9CW",
+    "credential_kind": "admin",
+    "effective_kind": "admin",
+    "exe_verified": true,
+    "peer_pid": 18422,
+    "tty": "verified",
+    "confirmation": "gesture"
+  }
+}

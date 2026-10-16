@@ -39,6 +39,7 @@
         "last_event_seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
         "audit_cursor": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Highest durable event seq already written to the audit log (outbox cursor)." },
         "manifest_cursor": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Highest durable event seq already reflected in provenance manifests (outbox cursor)." },
+        "artifact_cursor": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "description": "Highest durable event seq already registered in the artifact store (outbox cursor, 13 section 7.5). Absent when the artifact store is disabled; never above audit_cursor." },
         "audit_head": {
           "oneOf": [
             {
@@ -52,6 +53,15 @@
             },
             { "type": "null" }
           ]
+        },
+        "kill_switch": {
+          "description": "The kill-switch latch (07 section 8). Absent means never engaged. Written in the same transaction as the revocations and pauses it causes.",
+          "type": "object",
+          "required": ["engaged", "changed_at"],
+          "properties": {
+            "engaged": { "type": "boolean" },
+            "changed_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }
+          }
         }
       }
     },
@@ -102,6 +112,10 @@
         "resume_recheck": { "enum": ["none", "tail", "full"], "default": "tail" },
         "verify_result": { "oneOf": [{ "$ref": "#/$defs/VerifyResult" }, { "type": "null" }] },
         "finalize": { "oneOf": [{ "$ref": "#/$defs/FinalizeState" }, { "type": "null" }] },
+        "retry_no_progress_since": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp", "description": "First failed attempt since the last durable data progress; bounds consecutive retry stall time across restart." },
+        "retry_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 }, "description": "Consecutive bounded failure counters, reset after durable transfer progress." },
+        "last_state_seq": { "type": "integer", "minimum": 0, "description": "Sequence of this job's newest durable created/state event, updated in the same journal transaction. Zero is a legacy row without a recorded cursor." },
+        "os_metadata": { "type": "array", "uniqueItems": true, "items": { "enum": ["zone_identifier", "quarantine_xattr", "where_froms", "xdg_origin_url", "xdg_referrer_url"] }, "description": "Only provenance attributes successfully written to the finalized file." },
         "url_secret_stored": { "type": "boolean", "description": "True when spec.url carries a query string that is persisted verbatim (needed to resume)." }
       }
     },
@@ -138,17 +152,24 @@
       }
     },
     "IdempotencyRow": {
-      "description": "Row of table idempotency, key (client_id, key).",
+      "description": "Row of table idempotency, key (client_id, key). client_id is the daemon API credential id; the stored outcome is returned on a replay (00 section 5.4, 05 section 12).",
       "type": "object",
-      "required": ["client_id", "key", "request_hash", "job_id", "created_at", "expires_at"],
+      "required": ["client_id", "key", "request_hash", "created_at", "expires_at"],
       "properties": {
         "client_id": { "type": "string", "maxLength": 128 },
         "key": { "type": "string", "minLength": 1, "maxLength": 128 },
         "request_hash": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
-        "job_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "method": { "description": "The method the key was used with (part of request_hash).", "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$" },
+        "result": { "description": "The stored result object (with replayed false), or absent when a non-retryable error was stored.", "type": "object" },
+        "error": { "description": "The stored non-retryable error, when the call failed.", "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorEnvelope" },
+        "job_id": { "description": "Informational: the first job a jobs.enqueue created.", "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
         "created_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
         "expires_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }
       }
+    },
+    "ApprovalDecisionRow": {
+      "description": "Private decision record keyed by approval_id in approval_decisions. Written in the same transaction as the terminal approval, grants and events; never projected to public event payloads.",
+      "$ref": "https://zeus.invalid/schema/approvals.v1#/$defs/DecisionRecord"
     },
     "ReservationRow": {
       "description": "Row of table reservations, key = normalised destination path (case-folded on case-insensitive file systems). Guarantees two jobs never target one final path.",

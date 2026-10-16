@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":21,"error":{"code":-32002,"message":"approvals.decide can only be called by a human-capable client.","data":{"code":"api.human_required","class":"unauthenticated","message":"approvals.decide can only be called by a human-capable client.","retryable":false,"details":{"method":"approvals.decide","check":"kind"}}}}

@@ -1,0 +1,17 @@
+{
+  "id": "gr_01M480RFA0TEV0HDZZE5JVV8P8",
+  "origin": "https://media.example.net",
+  "scope": "site",
+  "state": "revoked",
+  "created_at": "2026-10-06T07:10:00.000Z",
+  "expires_at": "2026-10-07T07:10:00.000Z",
+  "approval_id": "ap_01M480QJZRWDM2R3XWHFKTKFF2",
+  "decided_by": { "kind": "human", "surface": "extension_popup" },
+  "uses": 3,
+  "last_used_at": "2026-10-06T07:44:10.000Z",
+  "revoked_at": "2026-10-06T09:12:45.120Z",
+  "revoked_by": { "kind": "human", "surface": "tui", "client_id": "cli_01M3V7ME01HNR0ATMA0D0XY9CW" },
+  "revocation_reason": "kill_switch",
+  "renewable": false,
+  "renewal_count": 0
+}

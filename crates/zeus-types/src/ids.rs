@@ -119,6 +119,11 @@ macro_rules! prefixed_id {
 }
 
 prefixed_id!(
+    /// One local artifact record (`art_<ULID>`).
+    ArtifactId,
+    "art"
+);
+prefixed_id!(
     /// One download job (`job_<ULID>`).
     JobId,
     "job"
@@ -369,6 +374,12 @@ impl IdGenerator {
     #[must_use]
     pub fn job_id(&self) -> JobId {
         JobId(self.next_ulid())
+    }
+
+    /// A fresh artifact identifier.
+    #[must_use]
+    pub fn artifact_id(&self) -> ArtifactId {
+        ArtifactId(self.next_ulid())
     }
 
     /// A fresh [`RunId`].

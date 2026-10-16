@@ -1,0 +1,11 @@
+{
+  "status": 206,
+  "range_support": "verified",
+  "size_bytes": 52428800,
+  "requires_session": false,
+  "interstitial_suspected": false,
+  "approval_needed": false,
+  "redirects": 0,
+  "untrusted_content_type": "application/zip",
+  "untrusted_filename": "release-2.4.1.zip"
+}

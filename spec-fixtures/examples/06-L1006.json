@@ -1,0 +1,7 @@
+{
+  "origin": "https://portal.example.org",
+  "scope": "once",
+  "reason": "This one export needs your login.",
+  "job_id": "job_01M48AKW7127CFKCDGD85Q0BNX",
+  "idempotency_key": "portal-once-8841"
+}

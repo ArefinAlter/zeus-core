@@ -10,8 +10,8 @@
 //! [`ConsentStore`](zeus_session::ConsentStore), [`AuditSink`](zeus_verify::AuditSink) and the
 //! [`ApprovalPort`]. Approvals are human-only and decided outside the engine.
 //!
-//! In the skeleton every method returns [`EngineError::NotImplemented`]; the signatures are the contract
-//! the daemon codes against.
+//! Direct transfers use bounded HTTP ranges, durable checksummed commits and verified finalization.
+//! The embedding daemon owns approvals, browser connection routing and audit-outbox publication.
 
 #![forbid(unsafe_code)]
 
@@ -21,13 +21,14 @@ pub mod engine;
 pub mod error;
 pub mod events;
 pub mod ports;
+mod proxy;
 
 pub use api::{
     ApprovalResolution, Caller, ControlAction, EngineStatus, EnqueueOutcome, EnqueueRequest,
-    GrantChange, GrantChangeKind, ListFilter, Page, ProbeUrlRequest,
+    GrantChange, GrantChangeKind, KillSwitchOutcome, ListFilter, Page, ProbeUrlRequest,
 };
 pub use config::{EngineConfig, SchedulerLimits, Timeouts};
 pub use engine::{Engine, EngineBuilder};
 pub use error::{EngineError, EngineResult};
 pub use events::{EngineEvent, EventSubscription};
-pub use ports::{ApprovalPort, ApprovalRequest};
+pub use ports::{ApprovalPort, ApprovalRequest, JobTransportFactory};

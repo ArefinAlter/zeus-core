@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":3,"method":"files.roots.register","params":{"path":"/home/ada/Downloads/Zeus/ogun","label":"ogun datasets","idempotency_key":"ogun-root-default"}}

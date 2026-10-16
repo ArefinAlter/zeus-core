@@ -51,7 +51,7 @@
 
     { "id": "S30", "from": ["awaiting_approval"], "to": "queued", "trigger": "approval approved", "actors": ["human"], "guard": "Approval decision is approve and the approval has not expired. grant.created is emitted only when the decision creates a grant.", "events": ["approval.decided", "grant.created", "job.state_changed"] },
     { "id": "S31", "from": ["awaiting_approval"], "to": "failed", "trigger": "approval denied or expired", "actors": ["human", "system"], "guard": "Decision deny, or approval deadline passed (class policy_denied). grant.created is emitted only when a deny decision also records a never grant.", "events": ["approval.decided", "grant.created", "job.state_changed", "job.failed"] },
-    { "id": "S32", "from": ["awaiting_approval"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "The pending approval is withdrawn (decision canceled, actor system).", "events": ["approval.decided", "job.state_changed"] },
+    { "id": "S32", "from": ["awaiting_approval"], "to": "canceled", "trigger": "cancel", "actors": ["client"], "guard": "The pending approval is withdrawn (decision canceled, actor system). When other jobs share the approval (07 section 4.7) the job leaves it instead: the approval is amended and approval.decided is not emitted.", "events": ["approval.decided", "job.state_changed"] },
 
     { "id": "S40", "from": ["awaiting_session"], "to": "queued", "trigger": "material delivered", "actors": ["engine"], "guard": "Session lease, refreshed URL or proxy channel is now available.", "events": ["job.state_changed"] },
     { "id": "S41", "from": ["awaiting_session"], "to": "awaiting_approval", "trigger": "consent missing", "actors": ["engine", "policy"], "guard": "Extension answered consent_required, or the grant was revoked or expired while waiting.", "events": ["job.state_changed", "approval.requested"] },
@@ -91,6 +91,7 @@
     "grant.created",
     "grant.revoked",
     "grant.expired",
+    "grant.renewed",
     "approval.requested",
     "approval.decided",
     "job.verified",
@@ -98,6 +99,7 @@
     "job.completed",
     "job.failed",
     "daemon.started",
-    "daemon.stopping"
+    "daemon.stopping",
+    "daemon.kill_switch"
   ]
 }

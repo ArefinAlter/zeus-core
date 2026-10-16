@@ -4,10 +4,6 @@
 //!
 //! Neither trait ever exposes a cookie through a log, an event or an error: material lives in
 //! [`SessionLease`], is `Debug`-redacted, and is dropped (zeroised) when the lease ends.
-#![expect(
-    unused_variables,
-    reason = "skeleton: lease helpers are filled in by the zeus-session implementation task"
-)]
 
 use std::collections::BTreeMap;
 use std::pin::Pin;
@@ -102,7 +98,63 @@ impl SessionMaterial {
         url: &url::Url,
         now: zeus_types::Timestamp,
     ) -> Option<InjectedHeaders> {
-        None
+        let origin = Origin::parse(&url.origin().ascii_serialization()).ok()?;
+        if origin != self.origin
+            || !origin.allows_session_release()
+            || now >= self.issued_at.saturating_add_ms(self.ttl_ms)
+        {
+            return None;
+        }
+        let host = url.host_str()?.to_ascii_lowercase();
+        let path = url.path();
+        let mut applicable = Vec::new();
+        for cookie in &self.cookies {
+            let domain = cookie.domain.trim_start_matches('.').to_ascii_lowercase();
+            let domain_matches =
+                host == domain || (!cookie.host_only && host.ends_with(&format!(".{domain}")));
+            let path_matches = cookie.path.starts_with('/')
+                && (path == cookie.path
+                    || (path.starts_with(&cookie.path)
+                        && (cookie.path.ends_with('/')
+                            || path.as_bytes().get(cookie.path.len()) == Some(&b'/'))));
+            if !domain_matches
+                || !path_matches
+                || (cookie.secure && url.scheme() != "https")
+                || cookie.expires_at.is_some_and(|t| t <= now)
+                || cookie.partition_key.is_some()
+            {
+                continue;
+            }
+            if cookie.name.is_empty()
+                || cookie
+                    .name
+                    .bytes()
+                    .any(|b| b <= 32 || b >= 127 || b"()<>@,;:\\\"/[]?={}".contains(&b))
+                || cookie
+                    .value
+                    .expose()
+                    .bytes()
+                    .any(|b| b < 32 || b == 127 || b == b';')
+            {
+                return None;
+            }
+            applicable.push(cookie);
+        }
+        applicable.sort_by_key(|c| std::cmp::Reverse(c.path.len()));
+        let value = applicable
+            .into_iter()
+            .map(|c| format!("{}={}", c.name, c.value.expose()))
+            .collect::<Vec<_>>()
+            .join("; ");
+        Some(InjectedHeaders {
+            cookie: if value.is_empty() {
+                None
+            } else {
+                Some(SecretString::new(value))
+            },
+            user_agent: self.user_agent.clone(),
+            extra: self.headers.clone(),
+        })
     }
 }
 
@@ -246,6 +298,90 @@ mod tests {
     fn the_traits_are_object_safe() {
         fn takes(_: Option<&dyn SessionProvider>, _: Option<&dyn ProxyFetch>) {}
         takes(None, None);
+    }
+
+    #[test]
+    fn headers_are_origin_path_and_expiry_scoped() {
+        use crate::material::{Cookie, SameSite};
+        let now = zeus_types::Timestamp::now();
+        let mut material = SessionMaterial {
+            session_id: zeus_types::IdGenerator::new().session_lease_id(),
+            origin: Origin::parse("https://a.example").unwrap(),
+            issued_at: now,
+            ttl_ms: 60_000,
+            cookies: vec![Cookie {
+                name: "sid".into(),
+                value: SecretString::from("secret"),
+                domain: "a.example".into(),
+                path: "/private".into(),
+                secure: true,
+                http_only: true,
+                same_site: SameSite::Lax,
+                host_only: true,
+                expires_at: None,
+                partition_key: None,
+            }],
+            user_agent: "UA".into(),
+            headers: BTreeMap::new(),
+            cookie_store_id: None,
+        };
+        assert_eq!(
+            material
+                .headers_for(
+                    &url::Url::parse("https://a.example/private/file").unwrap(),
+                    now
+                )
+                .unwrap()
+                .cookie
+                .unwrap()
+                .expose(),
+            "sid=secret"
+        );
+        assert!(
+            material
+                .headers_for(
+                    &url::Url::parse("https://a.example/private-other").unwrap(),
+                    now
+                )
+                .unwrap()
+                .cookie
+                .is_none()
+        );
+        assert!(
+            material
+                .headers_for(
+                    &url::Url::parse("https://other.example/private/file").unwrap(),
+                    now
+                )
+                .is_none()
+        );
+        assert!(
+            material
+                .headers_for(
+                    &url::Url::parse("http://a.example/private/file").unwrap(),
+                    now
+                )
+                .is_none()
+        );
+        material.cookies[0].expires_at = Some(now);
+        assert!(
+            material
+                .headers_for(
+                    &url::Url::parse("https://a.example/private/file").unwrap(),
+                    now
+                )
+                .unwrap()
+                .cookie
+                .is_none()
+        );
+        assert!(
+            material
+                .headers_for(
+                    &url::Url::parse("https://a.example/private/file").unwrap(),
+                    now.saturating_add_ms(60_000)
+                )
+                .is_none()
+        );
     }
 
     #[test]

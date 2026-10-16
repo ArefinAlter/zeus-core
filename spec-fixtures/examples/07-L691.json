@@ -1,0 +1,10 @@
+{
+  "approval_id": "ap_01M45TC900WT1S4TZV708J04JP",
+  "revision": 1,
+  "request_hash": "d34239794e9294eb22cfe01bc2132d587cdd2d9231c7e19c01ad43110428dd27",
+  "outcome": "expire",
+  "actor": { "kind": "system" },
+  "decided_at": "2026-10-12T10:40:00.000Z",
+  "grant_ids": [],
+  "system_reason": "deadline"
+}

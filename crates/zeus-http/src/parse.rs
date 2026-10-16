@@ -2,11 +2,6 @@
 //!
 //! Byte ranges are half-open everywhere in Zeus; the inclusive form of RFC 9110 exists only in these
 //! parsers and in the request builders, and converts at the boundary (00 section 6.3 rule 4).
-#![expect(
-    unused_variables,
-    reason = "skeleton: parse_content_disposition is filled in by the zeus-http implementation task"
-)]
-
 use std::time::Duration;
 
 use zeus_types::{ByteRange, Timestamp};
@@ -114,7 +109,75 @@ pub struct ParsedDisposition {
 /// percent-decoding) wins over `filename`; quoted-string escapes are honoured; only the `attachment`
 /// and `inline` dispositions matter. `None` when no usable name exists.
 pub fn parse_content_disposition(value: &str) -> HttpResult<Option<ParsedDisposition>> {
-    Err(HttpError::NotImplemented("parse_content_disposition"))
+    let mut fields = Vec::new();
+    let mut field = String::new();
+    let mut quoted = false;
+    let mut escaped = false;
+    for ch in value.chars() {
+        if escaped {
+            field.push(ch);
+            escaped = false;
+            continue;
+        }
+        if quoted && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if ch == ';' && !quoted {
+            fields.push(std::mem::take(&mut field));
+        } else {
+            field.push(ch);
+        }
+    }
+    if quoted || escaped {
+        return Ok(None);
+    }
+    fields.push(field);
+    if !fields.first().is_some_and(|f| {
+        matches!(
+            f.trim().to_ascii_lowercase().as_str(),
+            "attachment" | "inline"
+        )
+    }) {
+        return Ok(None);
+    }
+    let mut plain = None;
+    let mut extended = None;
+    for field in fields.iter().skip(1) {
+        let Some((name, raw)) = field.split_once('=') else {
+            continue;
+        };
+        let raw = raw.trim();
+        match name.trim().to_ascii_lowercase().as_str() {
+            "filename" if plain.is_none() => plain = Some(raw.to_owned()),
+            "filename*" if extended.is_none() => {
+                let parts: Vec<_> = raw.splitn(3, '\'').collect();
+                if parts.len() == 3
+                    && parts[0].eq_ignore_ascii_case("utf-8")
+                    && let Ok(decoded) =
+                        percent_encoding::percent_decode_str(parts[2]).decode_utf8()
+                {
+                    extended = Some(decoded.into_owned());
+                }
+            }
+            _ => {}
+        }
+    }
+    let (filename, extended) = match extended {
+        Some(s) => (s, true),
+        None => match plain {
+            Some(s) => (s, false),
+            None => return Ok(None),
+        },
+    };
+    if filename.is_empty() || filename.chars().any(char::is_control) {
+        return Ok(None);
+    }
+    Ok(Some(ParsedDisposition { filename, extended }))
 }
 
 #[cfg(test)]

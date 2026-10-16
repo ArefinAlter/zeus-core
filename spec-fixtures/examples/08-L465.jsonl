@@ -1,0 +1,5 @@
+{"severity":"error","code":"plan.selector_no_match","path":"/extract/items","message":"The item selector matched nothing on sample 0.","details":{"sample":0}}
+{"severity":"error","code":"plan.field_no_match","path":"/extract/fields/report_no","message":"The required field matched in none of 20 items on sample 1.","details":{"sample":1,"items":20}}
+{"severity":"warning","code":"plan.template_field_optional","path":"/post/rename","message":"The template reads title, which is not required, without a default filter."}
+{"severity":"warning","code":"plan.pagination_ineffective","path":"/pagination","message":"The second page yielded the same 20 items as the first."}
+{"severity":"error","code":"plan.depth_exceeded","path":"/budgets/max_depth","message":"follow needs max_depth of at least 2.","details":{"needed":2}}

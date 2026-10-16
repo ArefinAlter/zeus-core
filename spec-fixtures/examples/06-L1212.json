@@ -1,0 +1,10 @@
+{
+  "date": "2026-10-06",
+  "records": [
+    { "seq": 20412, "ts": "2026-10-06T10:02:12.881Z", "action": "tool.call", "outcome": "ok", "actor_kind": "agent", "actor_surface": "mcp", "self": true },
+    { "seq": 20415, "ts": "2026-10-06T10:02:13.004Z", "action": "approval.requested", "outcome": "ok", "actor_kind": "policy", "self": false, "job_id": "job_01M48AKW7127CFKCDGD85Q0BNX", "approval_id": "ap_01M48AKV3G4N115DH6YTN1CNX5", "origin": "https://portal.example.org" },
+    { "seq": 20431, "ts": "2026-10-06T10:05:40.220Z", "action": "approval.decided", "outcome": "ok", "actor_kind": "human", "actor_surface": "extension_popup", "self": false, "approval_id": "ap_01M48AKV3G4N115DH6YTN1CNX5", "origin": "https://portal.example.org" },
+    { "seq": 20432, "ts": "2026-10-06T10:05:40.220Z", "action": "grant.created", "outcome": "ok", "actor_kind": "human", "actor_surface": "extension_popup", "self": false, "grant_id": "gr_01M48AKV7SNP5F93PFWAG46NEG", "origin": "https://portal.example.org" }
+  ],
+  "truncated": false
+}

@@ -1,0 +1,7 @@
+{
+  "code": "api.not_interruptible",
+  "class": "conflict",
+  "message": "The job is finalizing and cannot be paused or canceled; try again in a few seconds.",
+  "retryable": true,
+  "next": { "action": "wait", "tool": "zeus_wait" }
+}

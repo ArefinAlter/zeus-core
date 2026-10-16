@@ -162,3 +162,14 @@ mod tests {
         assert!(p.items.is_empty() && p.next_cursor.is_none());
     }
 }
+
+/// Durable results of an emergency-stop policy transaction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KillSwitchOutcome {
+    /// Whether network admission is stopped.
+    pub engaged: bool,
+    /// Active allow grants revoked by this transaction.
+    pub grants_revoked: u64,
+    /// Interruptible jobs paused by this transaction.
+    pub jobs_paused: u64,
+}

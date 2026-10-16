@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "id": "d12",
+  "re": "e9",
+  "type": "kill_switch.response",
+  "body": { "engaged": true, "changed": true, "grants_revoked": 3, "jobs_paused": 5, "approvals_pending": 2 }
+}

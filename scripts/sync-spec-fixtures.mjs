@@ -25,6 +25,7 @@ if (!existsSync(specDir)) {
 const outRoot = join(root, 'spec-fixtures');
 const README = "# spec-fixtures\n\nA verbatim copy of the normative JSON Schemas and every validated example of the Zeus specification (the `zeus` repository, `docs/spec`), so the conformance tests of this repository need no access to the other one.\n\n* `schema/`: every `*.schema.json`, `job-state-machine.v1.json` and `redaction-vectors.v1.json`.\n* `examples/`: one file per `validate=` block of the markdown documents, named `<doc number>-L<line>.<json|jsonl>`, and `index.json` listing the schema, the definition and the source document of each.\n\nDo not edit these files by hand. Refresh them with:\n\n```sh\nnode scripts/sync-spec-fixtures.mjs ../zeus          # copy\nnode scripts/sync-spec-fixtures.mjs --check ../zeus  # fail if stale (CI)\n```\n\nTests read them through `zeus_types::spec_testing` (cargo feature `spec-testing`).\n";
 const files = new Map(); // relative path -> content (string | Buffer)
+files.set('README.md', README);
 
 for (const f of readdirSync(join(specDir, 'schema')).sort()) {
   files.set(`schema/${f}`, readFileSync(join(specDir, 'schema', f)));

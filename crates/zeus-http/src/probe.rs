@@ -13,12 +13,6 @@
 //!   `http.content_encoded`.
 //! * `Accept-Ranges` is advisory; `range_support` is `verified` only after a `206` with a correct
 //!   `Content-Range` was observed.
-#![expect(
-    unused_variables,
-    dead_code,
-    reason = "skeleton: HttpProber is filled in by the zeus-http implementation task"
-)]
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -137,7 +131,134 @@ impl Prober for HttpProber {
         request: ProbeRequest,
         cancel: &CancellationToken,
     ) -> HttpResult<ProbeOutcome> {
-        Err(HttpError::NotImplemented("HttpProber::probe"))
+        use crate::response::{compare_validators, failure, send_following, validators, value};
+        use zeus_types::job::{FilenameSource, HttpVersion};
+        use zeus_types::{
+            ProbeMethod, RangeSupport, RedactMode, ResolvedFilename, Timestamp, codes,
+        };
+        let range = request
+            .resume
+            .as_ref()
+            .map_or_else(|| "bytes=0-0".to_owned(), |r| format!("bytes={}-", r.start));
+        let bound = request
+            .resume
+            .as_ref()
+            .and_then(|r| r.bound_validators.if_range_value());
+        let (response, resolved_url, redirects) = send_following(
+            &self.transport,
+            request.hint_url.clone().unwrap_or(request.url),
+            &request.extra_headers,
+            request.session.as_ref(),
+            Some(&range),
+            bound,
+            request.head_timeout,
+            request.idle_timeout,
+            cancel,
+        )
+        .await?;
+        let status = response.status.as_u16();
+        let seen = validators(&response.headers);
+        let mut body_offset = 0;
+        let (range_support, total_bytes) = if status == 206 {
+            let cr = value(&response.headers, "content-range")
+                .ok_or(HttpError::Invalid("206 missing Content-Range"))?;
+            match crate::parse::parse_content_range(&cr)? {
+                crate::parse::ContentRange::Satisfied { range, total } => {
+                    let start = request.resume.as_ref().map_or(0, |r| r.start);
+                    if range.start != start || (request.resume.is_none() && range.end != 1) {
+                        return Err(failure(
+                            codes::INTEGRITY_RANGE_MISMATCH,
+                            "probe range does not match request",
+                        ));
+                    }
+                    body_offset = range.start;
+                    if let Some(resume) = &request.resume {
+                        compare_validators(&resume.bound_validators, &seen)?;
+                        if resume.total_bytes.is_some() && resume.total_bytes != total {
+                            return Err(failure(
+                                codes::INTEGRITY_RESOURCE_CHANGED,
+                                "resource length changed",
+                            ));
+                        }
+                        if !resume.bound_validators.is_strongly_identified() {
+                            return Err(failure(
+                                codes::INTEGRITY_RESOURCE_CHANGED,
+                                "resume without strong validator requires a clean restart",
+                            ));
+                        }
+                    }
+                    (RangeSupport::Verified, total)
+                }
+                _ => return Err(HttpError::Invalid("206 has unsatisfied Content-Range")),
+            }
+        } else if status == 200 {
+            if request.resume.is_some() {
+                return Err(failure(
+                    codes::INTEGRITY_RANGE_IGNORED,
+                    "server ignored resume range",
+                ));
+            }
+            (
+                RangeSupport::Unsupported,
+                value(&response.headers, "content-length").and_then(|v| v.parse().ok()),
+            )
+        } else if status == 416
+            && value(&response.headers, "content-range").as_deref() == Some("bytes */0")
+        {
+            (RangeSupport::Unsupported, Some(0))
+        } else {
+            return Err(HttpError::Invalid("unexpected probe response"));
+        };
+        let disposition = value(&response.headers, "content-disposition")
+            .and_then(|v| crate::parse::parse_content_disposition(&v).ok().flatten());
+        let filename = match disposition {
+            Some(d) => ResolvedFilename {
+                value: d.filename,
+                source: FilenameSource::ContentDisposition,
+            },
+            None => ResolvedFilename {
+                value: resolved_url
+                    .url()
+                    .path_segments()
+                    .and_then(|mut p| p.next_back())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("download")
+                    .to_owned(),
+                source: FilenameSource::UrlPath,
+            },
+        };
+        let result = ProbeResult {
+            probed_at: Timestamp::now(),
+            method: ProbeMethod::RangeGet,
+            transport: zeus_types::Transport::Direct,
+            http_version: Some(if response.version == http::Version::HTTP_2 {
+                HttpVersion::H2
+            } else {
+                HttpVersion::Http11
+            }),
+            status,
+            final_url_redacted: Some(resolved_url.redact(RedactMode::Log)),
+            redirects,
+            range_support,
+            total_bytes,
+            content_type: value(&response.headers, "content-type"),
+            content_encoding: value(&response.headers, "content-encoding"),
+            filename,
+            validators: seen,
+            requires_session: false,
+            interstitial_suspected: false,
+        };
+        let body = if status == 200 || (status == 206 && request.resume.is_some()) {
+            Some(response.body)
+        } else {
+            None
+        };
+        Ok(ProbeOutcome {
+            result,
+            resolved_url,
+            body,
+            body_offset,
+        })
     }
 }
 

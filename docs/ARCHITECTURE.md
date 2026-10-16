@@ -81,16 +81,23 @@ A range reaches the journal only after the bytes it names were flushed: **write,
 
 ## Status
 
-| Crate | Implemented now | API only (returns `NotImplemented`) |
+| Crate | Implemented now | Remaining |
 |---|---|---|
-| `zeus-types` | Everything in 00 and 01: ids, timestamps, origins, redaction, secrets, job entity, state machine, errors and registry, grants, approvals, events, retry and scheduling constants, schema generation, `spec_testing` helpers | none |
-| `zeus-control` | `Clock` (system, manual), `RandomSource` (system, SplitMix64), `RangeSet`, `Backoff` (full, equal, decorrelated jitter), `Ewma`, `slice_range` | rate estimator, Kalman, ETA band, AIMD, bandits, segment planner, steal planner, chunk optimiser, P-squared, hedging, math, limiters, WFQ, max-min, CUSUM |
-| `zeus-fs` | I/O error classification (A1 to A9), crash decision procedure, `zpart_path`, Zone.Identifier text, cloud-folder detection, day folders | `sanitize_filename`, `unique_name`, `SafeRoot`, `WriteRoots`, `RealFs`, `rename_into_place`, `NativeMarker`, `Trash` |
-| `zeus-verify` | `DualHasher`, JCS and hashing rules, duplicate-key rejection, request hash, audit records, genesis and record hashing, **chain verification against the published vectors**, `MemoryAuditLog`, archive guard, executable-extension rule, manifest types | `verify_file`, `check_content`, quarantine `evaluate`, file-backed `AuditLog`, `verify_dir`, `ProvenanceWriter`, export |
-| `zeus-journal` | All record types, store traits, `Journal::transact/read/create_job/committed/list_incomplete`, commit policy and `CommitBatcher`, fault injection, error mapping | `RedbStore`, `commit_round`, `apply_transition`, `invalidate_*`, `finish_job`, `recover`, `assess_resume` |
-| `zeus-session` | Every native-messaging message as typed Rust, frame codec (sync, async, incremental), negotiation, credit flow control and stream validation, interrupt-reason table, session material with redaction | `InMemoryConsentStore`, `RequestCorrelator` registration and delivery, cookie header building |
-| `zeus-http` | `Content-Range`, `Retry-After`, HTTP dates, `Range` header, transport failure classification (stage C), transport trait with redacting `Debug`, `ReqwestTransport::new` | response classification (stage D), `parse_content_disposition`, `HttpProber`, `HttpSegmentFetcher`, `ReqwestTransport::send` |
-| `zeus-engine` | Config and bounds, error mapping, event subscription type, ports, request/result types, builder | every `Engine` method |
+| `zeus-types` | Domain types, state machine, current approval bindings, event catalogue and schema/conformance tests | Contract revisions continue; no API freeze claimed |
+| `zeus-control` | Clocks, randomness, ranges, backoff, EWMA, AIMD, segment planning, token bucket/GCRA and fairness | Rate estimator, Kalman/ETA uncertainty, mirror bandits, P-squared/hedging, reliability math and CUSUM |
+| `zeus-fs` | Real positional files, filename handling, root containment, no-replace finalization, marks and trash | Handle-pinned root protection against directory swaps; full platform acceptance |
+| `zeus-verify` | File hashes, content/quarantine decisions, JCS, durable chained audit, manifests and redacted exports | Full audit retention/repair workflows and platform hardening |
+| `zeus-journal` | redb records, atomic transitions/commits, durable grant/latch state, recovery and resume validation | Migration/corruption rescue, performance indexes and broader crash matrix |
+| `zeus-session` | Protocol/framing, negotiation, flow control, consent, correlation, exact-origin cookie headers | Browser adapters live in the daemon; authenticated page-rendering contract remains separate |
+| `zeus-http` | Actual HTTP(S), range probe/fetch, explicit redirects, validation and bounded body handling | Wider server/interoperability matrix and authenticated URL-refresh recovery |
+| `zeus-engine` | Enqueue/probe/control/wait/verify/events, durable idempotent controls, segmented execution, durable bounded retry timers, recovery, grant enforcement, atomic kill switch and browser proxy | URL refresh, adaptive scheduling/fairness integration, authenticated standalone probe semantics |
+| `zeus-artifact` | Shared storage, record-only/copy ingestion, materialization, metadata, exports, GC/scrub/repair | Full cross-product lifecycle and platform acceptance |
+
+The engine currently uses static bounded concurrency. Its loopback tests exercise strict range validation, changed validators, corrupted or replaced partial files, restart/resume and verification. Automatic retries use persisted deadlines, class budgets and full-jitter backoff with a Retry-After floor; tests cover a transient failure followed by success, restart during backoff, permanent failure, budget exhaustion, and pause/cancel/kill interruption. Session tests exercise trusted durable approval, revocation, the kill switch and browser proxy streams. These tests do not replace real Chrome/Edge/Firefox acceptance or a complete power-loss fault matrix.
+
+URL-expiry and authentication-refresh recovery are still separate work. AIMD, rate-limiter and fairness helpers are not yet connected to the engine scheduler. Browser-proxy redirects fail closed until the URL-refresh and redirect-consent flow is validated.
+
+The daemon can inject a per-job transport and a commit guard for workflow policy. The transport checks destinations and pacing; the commit guard runs under the journal writer so concurrent jobs cannot exceed a shared byte budget.
 
 ## Build notes
 

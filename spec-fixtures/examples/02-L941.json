@@ -1,0 +1,6 @@
+{
+  "v": 1,
+  "id": "e9",
+  "type": "kill_switch",
+  "body": { "action": "engage", "ui": { "surface": "extension_popup", "user_gesture": true } }
+}

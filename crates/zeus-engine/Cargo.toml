@@ -24,12 +24,14 @@ tracing.workspace = true
 futures.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
+http.workspace = true
+crc32c.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt", "rt-multi-thread", "macros"] }
 tokio-util = { workspace = true, features = ["rt"] }
 
 [dev-dependencies]
 tempfile.workspace = true
-tokio = { workspace = true, features = ["sync", "time", "rt", "rt-multi-thread", "macros", "test-util"] }
+tokio = { workspace = true, features = ["sync", "time", "rt", "rt-multi-thread", "macros", "test-util", "net", "io-util"] }
 
 [lints]
 workspace = true

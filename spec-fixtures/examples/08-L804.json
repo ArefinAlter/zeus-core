@@ -1,0 +1,75 @@
+{
+  "plan_id": "plan_01M4AD8X0R6Q2VZ3M7KJ9C5T1B",
+  "plan_hash": "92dd886f1f8acab8b89e434114e9eae74e636f5baf268223a8fbca4603def6ca",
+  "generated_at": "2026-10-06T08:05:43.090Z",
+  "complete": true,
+  "sampled_pages": 3,
+  "sample": [
+    {
+      "index": 1,
+      "url_redacted": "https://portal.example.org/files/reports/2026/TR-2026-0141.pdf",
+      "file_name": "tr-2026-0141-corrosion-rates-of-marine-alloys.pdf",
+      "subdir": "2026",
+      "size_bytes": 2811904,
+      "media_type": "application/pdf",
+      "action": "enqueue",
+      "fields": {
+        "url": "https://portal.example.org/files/reports/2026/TR-2026-0141.pdf",
+        "report_no": "TR-2026-0141",
+        "title": "Corrosion Rates of Marine Alloys",
+        "published": "2026-03-02",
+        "year": "2026",
+        "size_bytes": "2811904"
+      }
+    },
+    {
+      "index": 2,
+      "url_redacted": "https://portal.example.org/files/reports/2026/TR-2026-0142.docx",
+      "file_name": "tr-2026-0142-ballast-water-sampling-protocol.docx",
+      "subdir": "2026",
+      "size_bytes": 912384,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "action": "enqueue",
+      "fields": {
+        "url": "https://portal.example.org/files/reports/2026/TR-2026-0142.docx",
+        "report_no": "TR-2026-0142",
+        "title": "Ballast Water Sampling Protocol",
+        "published": "2026-03-04",
+        "year": "2026",
+        "size_bytes": "912384"
+      }
+    }
+  ],
+  "name_collisions": 0,
+  "existing_files": 0,
+  "estimate_pages": { "low": 62, "point": 62, "high": 62, "basis": "count_hint" },
+  "estimate_files": { "low": 1150, "point": 1203, "high": 1240, "basis": "count_hint" },
+  "estimate_bytes": { "low": 2684354560, "point": 3328180224, "high": 4294967296, "basis": "sample_extrapolation" },
+  "estimate_duration_ms": { "low": 2600000, "point": 2820000, "high": 3560000, "basis": "sample_extrapolation" },
+  "dominant_assumption": "politeness",
+  "hosts": [
+    {
+      "host": "portal.example.org",
+      "robots": "allowed",
+      "crawl_delay_ms": null,
+      "effective_interval_ms": 2000,
+      "disallowed_samples": 0
+    }
+  ],
+  "session": "grant_effective",
+  "requires_browser": false,
+  "warnings": [
+    {
+      "severity": "warning",
+      "code": "plan.tos_logged_in",
+      "path": "/session",
+      "message": "This plan downloads with your logged-in session. The site's terms of use apply to automated access."
+    },
+    {
+      "severity": "info",
+      "code": "plan.estimate_from_budget",
+      "path": "/budgets/max_duration_ms",
+      "message": "The P90 duration is within the 8 h duration budget."
+    }
+  ]
+}

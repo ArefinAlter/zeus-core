@@ -1,0 +1,7 @@
+{
+  "code": "api.invalid_params",
+  "class": "invalid_request",
+  "message": "missing property idempotency_key",
+  "retryable": false,
+  "next": { "action": "none" }
+}

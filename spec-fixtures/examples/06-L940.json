@@ -1,0 +1,9 @@
+{
+  "job_id": "job_01M45Z7XF00EGQK145RK7K5ZSV",
+  "sha256": "5e3c1b0f2a9d4c7e8b6a1f0e9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c",
+  "size_bytes": 3145728,
+  "matches_recorded": true,
+  "quarantined": true,
+  "quarantine_reasons": ["executable_type", "mime_mismatch"],
+  "untrusted_detected_type": "application/vnd.microsoft.portable-executable"
+}

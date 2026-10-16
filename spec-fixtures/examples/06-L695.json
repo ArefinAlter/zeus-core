@@ -1,0 +1,7 @@
+{
+  "code": "api.idempotency_conflict",
+  "class": "conflict",
+  "message": "idempotency_key was already used with different arguments; use a new key for a new intent.",
+  "retryable": false,
+  "next": { "action": "none" }
+}

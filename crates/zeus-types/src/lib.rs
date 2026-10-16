@@ -41,10 +41,11 @@ pub use error::{CodeInfo, ErrorClass, ErrorCode, ErrorEnvelope, ToEnvelope, Type
 pub use event::{Event, EventKind, EventPayload};
 pub use grant::{
     Actor, ActorKind, Approval, ApprovalKind, ApprovalState, ApprovalSummary, Decision,
-    DecisionOutcome, GrantResolution, GrantScope, GrantState, SessionGrant, Surface, resolve_grant,
+    DecisionOutcome, GrantResolution, GrantScope, GrantState, RevocationReason, SessionGrant,
+    Surface, resolve_grant,
 };
 pub use ids::{
-    ApprovalId, ChainId, ConnectionId, EventSeq, GrantId, IdGenerator, JobId, RunId,
+    ApprovalId, ArtifactId, ChainId, ConnectionId, EventSeq, GrantId, IdGenerator, JobId, RunId,
     SessionLeaseId, StoreId,
 };
 pub use job::{

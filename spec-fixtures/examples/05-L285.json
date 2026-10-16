@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"method":"daemon.hello","params":{"protocol_versions":[1],"capabilities":["events","events.replay","jobs.wait","idempotency"],"client":{"name":"zeus-mcp","version":"0.1.0","role":"mcp"},"client_nonce":"6c0f2e1b9a7d43c58e1f0a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f"}}

@@ -1,0 +1,104 @@
+{
+  "name": "zeus_wait",
+  "title": "Wait for jobs",
+  "description": "Wait up to timeout_s (default 30, max 60) until a job completes, fails or needs a person, then return the jobs. Pass the returned cursor as since next time so old states do not wake you. Changes nothing. If next.action is ask_user, tell the user and stop waiting on that job.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["job_ids"],
+    "properties": {
+      "job_ids": {
+        "description": "1 to 20 job ids.",
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 20,
+        "uniqueItems": true,
+        "items": { "type": "string", "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$" }
+      },
+      "until": {
+        "description": "settled_or_blocked: a job completed, failed or was canceled, or needs a person or the browser. all_settled: every job completed, failed or was canceled. any_change: any state change.",
+        "enum": ["settled_or_blocked", "all_settled", "any_change"],
+        "default": "settled_or_blocked"
+      },
+      "timeout_s": { "description": "Seconds to wait, 1 to 60.", "type": "integer", "minimum": 1, "maximum": 60, "default": 30 },
+      "since": {
+        "type": "string",
+        "pattern": "^ev_(0|[1-9][0-9]{0,15})$",
+        "description": "cursor from your previous zeus_wait, so states already reported do not end the wait."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "anyOf": [
+      {
+        "type": "object",
+        "required": ["jobs", "timed_out", "all_settled", "cursor"],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["job_id", "state", "bytes_done", "quarantined"],
+              "properties": {
+                "job_id": { "type": "string" },
+                "state": { "type": "string" },
+                "bytes_done": { "type": "integer" },
+                "bytes_total": { "type": "integer" },
+                "rate_ewma": { "type": "integer" },
+                "eta_s": { "type": "integer" },
+                "quarantined": { "type": "boolean" },
+                "error": {
+                  "type": "object",
+                  "required": ["code", "class", "retryable"],
+                  "properties": {
+                    "code": { "type": "string" },
+                    "class": { "type": "string" },
+                    "retryable": { "type": "boolean" },
+                    "message": { "type": "string" }
+                  }
+                },
+                "next": {
+                  "type": "object",
+                  "required": ["action"],
+                  "properties": { "action": { "type": "string" }, "tool": { "type": "string" } }
+                },
+                "approval_id": { "type": "string" },
+                "bind_code": { "type": "string" },
+                "sha256": { "type": "string" },
+                "untrusted_filename": { "type": "string" },
+                "untrusted_path": { "type": "string" }
+              }
+            }
+          },
+          "timed_out": { "type": "boolean" },
+          "all_settled": { "type": "boolean" },
+          "cursor": { "type": "string" }
+        }
+      },
+      {
+        "type": "object",
+        "required": ["code", "class", "message", "retryable", "next"],
+        "properties": {
+          "code": { "type": "string" },
+          "class": { "type": "string" },
+          "message": { "type": "string" },
+          "retryable": { "type": "boolean" },
+          "details": { "type": "object" },
+          "next": {
+            "type": "object",
+            "required": ["action"],
+            "properties": { "action": { "type": "string" }, "tool": { "type": "string" } }
+          }
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "title": "Wait for jobs",
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

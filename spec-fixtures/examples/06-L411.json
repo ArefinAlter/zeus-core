@@ -1,0 +1,11 @@
+{
+  "zeus_probe": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true },
+  "zeus_enqueue": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true },
+  "zeus_status": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+  "zeus_wait": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+  "zeus_control": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true },
+  "zeus_verify": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+  "zeus_session_list": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+  "zeus_session_request": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+  "zeus_files_list": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+}

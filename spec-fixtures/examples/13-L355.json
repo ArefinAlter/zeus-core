@@ -1,0 +1,10 @@
+{
+  "format": "zeus-artifact-store",
+  "format_version": 1,
+  "store_id": "01M2YVJ3K8W5D0QXNB7RT4CHAE",
+  "created_at": "2026-09-20T07:30:00.120Z",
+  "created_by": { "product": "zeus", "version": "0.1.0", "library": "zeus-artifact 0.1.0" },
+  "object_algorithm": "blake3",
+  "fanout": [2, 2],
+  "index": "redb"
+}

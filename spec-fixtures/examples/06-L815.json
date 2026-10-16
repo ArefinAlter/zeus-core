@@ -1,0 +1,26 @@
+{
+  "jobs": [
+    {
+      "job_id": "job_01M48AKW2RDVBCR29C5HZ0ZD6Y",
+      "state": "completed",
+      "bytes_done": 48213,
+      "bytes_total": 48213,
+      "quarantined": false,
+      "sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a",
+      "untrusted_filename": "q3.csv.gz",
+      "untrusted_path": "/home/ada/Downloads/Zeus/q3.csv.gz"
+    },
+    {
+      "job_id": "job_01M48AKW7127CFKCDGD85Q0BNX",
+      "state": "awaiting_approval",
+      "bytes_done": 0,
+      "quarantined": false,
+      "next": { "action": "ask_user" },
+      "approval_id": "ap_01M48AKV3G4N115DH6YTN1CNX5",
+      "bind_code": "WPB-ZD8"
+    }
+  ],
+  "timed_out": false,
+  "all_settled": false,
+  "cursor": "ev_48702"
+}

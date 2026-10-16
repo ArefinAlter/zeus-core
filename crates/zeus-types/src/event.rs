@@ -270,8 +270,19 @@ pub struct GrantExpiredData {
 /// `approval.requested`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ApprovalRequestedData {
-    /// The approval, with daemon-computed facts.
+    /// Public approval entity; private facts and requester annotations never enter events.
+    #[serde(serialize_with = "serialize_event_approval")]
     pub approval: Approval,
+}
+
+fn serialize_event_approval<S: Serializer>(
+    approval: &Approval,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let mut public = approval.clone();
+    public.facts = None;
+    public.agent_says = None;
+    public.serialize(serializer)
 }
 
 /// `approval.decided`.
@@ -366,6 +377,25 @@ pub struct DaemonStartedData {
 pub struct DaemonStoppingData {
     /// Why.
     pub reason: StopReason,
+}
+
+/// `grant.renewed`: renewed consent without session material.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct GrantRenewedData {
+    /// The renewed grant.
+    pub grant: SessionGrant,
+}
+/// `daemon.kill_switch`: durable latch state and sweep results.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DaemonKillSwitchData {
+    /// Whether the latch is engaged.
+    pub engaged: bool,
+    /// Grants revoked in this sweep.
+    pub grants_revoked: u64,
+    /// Jobs paused in this sweep.
+    pub jobs_paused: u64,
+    /// Authenticated actor.
+    pub by: Actor,
 }
 
 macro_rules! event_catalogue {
@@ -476,7 +506,8 @@ event_catalogue! {
     GrantCreated(GrantCreatedData) = "grant.created", durable: true, job_id: false;
     GrantRevoked(GrantRevokedData) = "grant.revoked", durable: true, job_id: false;
     GrantExpired(GrantExpiredData) = "grant.expired", durable: true, job_id: false;
-    ApprovalRequested(ApprovalRequestedData) = "approval.requested", durable: true, job_id: false;
+    GrantRenewed(GrantRenewedData) = "grant.renewed", durable: true, job_id: false;
+    ApprovalRequested(Box<ApprovalRequestedData>) = "approval.requested", durable: true, job_id: false;
     ApprovalDecided(ApprovalDecidedData) = "approval.decided", durable: true, job_id: false;
     JobVerified(JobVerifiedData) = "job.verified", durable: true, job_id: true;
     JobQuarantined(JobQuarantinedData) = "job.quarantined", durable: true, job_id: true;
@@ -484,6 +515,13 @@ event_catalogue! {
     JobFailed(JobFailedData) = "job.failed", durable: true, job_id: true;
     DaemonStarted(DaemonStartedData) = "daemon.started", durable: true, job_id: false;
     DaemonStopping(DaemonStoppingData) = "daemon.stopping", durable: true, job_id: false;
+    DaemonKillSwitch(DaemonKillSwitchData) = "daemon.kill_switch", durable: true, job_id: false;
+}
+
+impl From<ApprovalRequestedData> for EventPayload {
+    fn from(value: ApprovalRequestedData) -> Self {
+        Self::ApprovalRequested(Box::new(value))
+    }
 }
 
 /// An event: the envelope plus a typed payload.
@@ -698,6 +736,7 @@ mod tests {
                 "grant.created",
                 "grant.revoked",
                 "grant.expired",
+                "grant.renewed",
                 "approval.requested",
                 "approval.decided",
                 "job.verified",
@@ -706,6 +745,7 @@ mod tests {
                 "job.failed",
                 "daemon.started",
                 "daemon.stopping",
+                "daemon.kill_switch",
             ]
         );
         for kind in EventKind::ALL {
@@ -780,5 +820,28 @@ mod tests {
     fn known_type_with_bad_data_is_an_error() {
         let text = r#"{"seq":1,"ts":"2026-10-05T09:15:30.250Z","type":"daemon.stopping","data":{"reason":"because"}}"#;
         assert!(serde_json::from_str::<Event>(text).is_err());
+    }
+}
+
+#[cfg(test)]
+mod approval_privacy_tests {
+    use super::*;
+    #[test]
+    fn full_approval_facts_and_agent_annotation_are_removed_from_events() {
+        let approval:Approval=serde_json::from_value(serde_json::json!({"id":"ap_01M3TC5H007DRT2QA1P1NY311K","kind":"session_grant","state":"pending","allowed_scopes":["once"],"reason_codes":["session.first_use"],"summary":{"title":"Review"},"created_at":"2026-10-01T00:00:00.000Z","expires_at":"2026-10-02T00:00:00.000Z","facts":{"private_path":"ZEUS-CANARY-fact"},"agent_says":"ZEUS-CANARY-agent"})).unwrap();
+        assert!(
+            serde_json::to_string(&approval)
+                .unwrap()
+                .contains("ZEUS-CANARY")
+        );
+        let event = Event::durable(
+            EventSeq::FIRST,
+            Timestamp::UNIX_EPOCH,
+            ApprovalRequestedData { approval },
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("ZEUS-CANARY"));
+        assert!(!json.contains("agent_says"));
+        assert!(!json.contains("facts"));
     }
 }

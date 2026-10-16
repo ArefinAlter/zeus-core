@@ -1,0 +1,29 @@
+{
+  "approval_id": "ap_01M45NHJ3XS0QXG9T42HHN2YR8",
+  "revision": 1,
+  "request_hash": "09e8478513076b8b79ed19675402421a3cee9eb3d4c73487daa7bd63a55003ae",
+  "outcome": "approve",
+  "scope": "site",
+  "actor": { "kind": "human", "surface": "extension_popup", "client_id": "cli_01M3V7ME00TBC6F3THCHXHRYWJ" },
+  "decided_at": "2026-10-05T09:15:34.870Z",
+  "grant_ids": ["gr_01M45NHPJP04TX6B1CJVQVQAK9"],
+  "evidence": {
+    "surface": "extension_popup",
+    "role": "native_host",
+    "client_id": "cli_01M3V7ME00TBC6F3THCHXHRYWJ",
+    "credential_kind": "human",
+    "effective_kind": "human",
+    "exe_verified": true,
+    "peer_pid": 23140,
+    "tty": "not_applicable",
+    "confirmation": "gesture",
+    "extension": {
+      "browser": "chrome",
+      "attested_extension": "abcdefghijklmnopabcdefghijklmnop",
+      "profile_id": "6f1c2a9e0b7d4e3fa5c8d2b1e0f9a7c3",
+      "connection_id": "conn_01M45MS5HRSRFGHDEW4KQXZXQN",
+      "user_gesture": true,
+      "parent_verified": true
+    }
+  }
+}

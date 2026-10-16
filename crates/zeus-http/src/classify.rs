@@ -3,16 +3,11 @@
 //! Stage C (transport failures, rules C1 to C8) is implemented here. Stage D (an HTTP response, rules D0
 //! to D12, with the block and expiry markers and the signing-parameter list) is the API contract of
 //! [`classify_response`]; its body is filled in by the implementation task.
-#![expect(
-    unused_variables,
-    reason = "skeleton: classify_response is filled in by the zeus-http implementation task"
-)]
-
 use http::HeaderMap;
 use zeus_types::error::status_class;
 use zeus_types::{ErrorClass, ErrorEnvelope, codes};
 
-use crate::error::{HttpError, HttpResult};
+use crate::error::HttpResult;
 use crate::transport::TransportFailure;
 
 /// The outcome of classification: the class that drives retry policy and the registered code.
@@ -75,6 +70,8 @@ impl Classification {
 pub fn classify_transport(kind: TransportFailure) -> Classification {
     use TransportFailure as F;
     Classification::of(match kind {
+        F::ProtocolViolation => codes::HTTP_PROTOCOL_ERROR,
+        F::PolicyDenied => codes::POLICY_APPROVAL_DENIED,
         F::DnsNxdomain => codes::NET_DNS_NXDOMAIN,
         F::DnsFailure => codes::NET_DNS_FAILURE,
         F::ConnectionRefused => codes::NET_CONNECTION_REFUSED,
@@ -120,7 +117,33 @@ pub struct ResponseEvidence<'a> {
 /// `3xx` with a valid `Location`; a `416` with the matching `Content-Range` total is resume logic, not
 /// an error, rule D10). Before applying the rules the caller reads at most 4 KiB of any error body.
 pub fn classify_response(evidence: &ResponseEvidence<'_>) -> HttpResult<Option<Classification>> {
-    Err(HttpError::NotImplemented("classify_response"))
+    let e = evidence;
+    if matches!(e.status, 200 | 206) {
+        return Ok(None);
+    }
+    if (300..400).contains(&e.status) && e.headers.contains_key(http::header::LOCATION) {
+        return Ok(None);
+    }
+    let prefix = String::from_utf8_lossy(e.body_prefix).to_ascii_lowercase();
+    if e.url_has_signing_params
+        && (e.signed_url_expired == Some(true)
+            || prefix.contains("expiredtoken")
+            || prefix.contains("request has expired"))
+    {
+        return Ok(Some(Classification::of(codes::URL_EXPIRED)));
+    }
+    if e.headers
+        .get("cf-mitigated")
+        .is_some_and(|v| v == "challenge")
+        || prefix.contains("cf-chl-")
+        || prefix.contains("captcha")
+    {
+        return Ok(Some(Classification::of(codes::HTTP_BLOCKED_CHALLENGE)));
+    }
+    if e.status == 403 && (e.session_used || e.requires_session) {
+        return Ok(Some(Classification::of(codes::HTTP_FORBIDDEN_SESSION)));
+    }
+    Ok(Some(Classification::for_status(e.status)))
 }
 
 #[cfg(test)]

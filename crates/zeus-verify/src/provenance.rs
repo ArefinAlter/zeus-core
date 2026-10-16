@@ -4,13 +4,8 @@
 //! Records are append-only; a replaced file produces a new record and consumers use the most recent
 //! per `path`. URLs are always redacted (`record` or `strict` mode): there is no way to store a raw URL
 //! in a manifest. Absolute paths never appear, so manifests do not leak user names.
-#![expect(
-    unused_variables,
-    dead_code,
-    reason = "skeleton: ProvenanceWriter and export are filled in by the zeus-verify implementation task"
-)]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use zeus_types::{
@@ -286,24 +281,124 @@ pub fn validate_rel_path(path: &str) -> VerifyResult<()> {
 /// shutdown), a lost tail regenerated from the outbox at recovery.
 #[derive(Debug)]
 pub struct ProvenanceWriter {
-    root: PathBuf,
+    header: ManifestHeader,
+    state: std::sync::Mutex<ManifestState>,
+    _lock: std::fs::File,
+}
+
+#[derive(Debug)]
+struct ManifestState {
+    file: std::fs::File,
+    seen: std::collections::HashSet<(JobId, String)>,
 }
 
 impl ProvenanceWriter {
     /// Opens the ledger of `root`, writing the header if the file is new.
     pub fn open(root: &Path, header: ManifestHeader) -> VerifyResult<Self> {
-        Err(VerifyError::NotImplemented("ProvenanceWriter::open"))
+        use std::io::Write;
+        let root = std::fs::canonicalize(root)?;
+        let dir = root.join(".zeus");
+        if dir.try_exists()? && std::fs::symlink_metadata(&dir)?.file_type().is_symlink() {
+            return Err(VerifyError::Invalid(
+                "manifest directory cannot be a symlink",
+            ));
+        }
+        std::fs::create_dir_all(&dir)?;
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(dir.join("manifest.lock"))?;
+        lock.try_lock()
+            .map_err(|_| VerifyError::Invalid("manifest already open"))?;
+        let path = dir.join("manifest.jsonl");
+        if path.try_exists()? && !std::fs::symlink_metadata(&path)?.is_file() {
+            return Err(VerifyError::Invalid("manifest must be a regular file"));
+        }
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .append(true)
+            .create(true)
+            .open(&path)?;
+        let mut bytes = std::fs::read(&path)?;
+        // The durable outbox regenerates any incomplete final line.
+        if !bytes.is_empty() && !bytes.ends_with(b"\n") {
+            let end = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+            file.set_len(end as u64)?;
+            bytes.truncate(end);
+        }
+        let mut seen = std::collections::HashSet::new();
+        let header = if bytes.is_empty() {
+            if header.manifest_version != 0 {
+                return Err(VerifyError::Invalid("unsupported manifest version"));
+            }
+            let mut line = serde_json::to_vec(&header)?;
+            line.push(b'\n');
+            file.write_all(&line)?;
+            file.sync_all()?;
+            header
+        } else {
+            let text = std::str::from_utf8(&bytes)
+                .map_err(|_| VerifyError::Invalid("manifest is not UTF-8"))?;
+            let mut lines = text.lines();
+            let existing: ManifestHeader = serde_json::from_str(
+                lines
+                    .next()
+                    .ok_or(VerifyError::Invalid("manifest header missing"))?,
+            )?;
+            if existing.manifest_version != 0 {
+                return Err(VerifyError::Invalid("unsupported manifest version"));
+            }
+            for line in lines {
+                let record: ManifestFile = serde_json::from_str(line)?;
+                validate_rel_path(&record.path)?;
+                seen.insert((record.job_id, record.path));
+            }
+            existing
+        };
+        Ok(Self {
+            header,
+            state: std::sync::Mutex::new(ManifestState { file, seen }),
+            _lock: lock,
+        })
     }
 
     /// Appends a file record unless a line with the same `job_id` and `path` already exists.
     /// Returns whether a line was written.
     pub fn append(&self, record: &ManifestFile) -> VerifyResult<bool> {
-        Err(VerifyError::NotImplemented("ProvenanceWriter::append"))
+        use std::io::Write;
+        validate_rel_path(&record.path)?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| VerifyError::Invalid("manifest writer poisoned"))?;
+        let key = (record.job_id, record.path.clone());
+        if state.seen.contains(&key) {
+            return Ok(false);
+        }
+        let mut record = record.clone();
+        apply_privacy(
+            &mut record,
+            !self.header.privacy.session_origin_included,
+            self.header.privacy.url_query == UrlQueryPrivacy::Dropped,
+        )?;
+        let mut line = serde_json::to_vec(&record)?;
+        line.push(b'\n');
+        state.file.write_all(&line)?;
+        state.file.sync_data()?;
+        state.seen.insert(key);
+        Ok(true)
     }
 
     /// Flushes pending lines to stable storage.
     pub fn flush(&self) -> VerifyResult<()> {
-        Err(VerifyError::NotImplemented("ProvenanceWriter::flush"))
+        self.state
+            .lock()
+            .map_err(|_| VerifyError::Invalid("manifest writer poisoned"))?
+            .file
+            .sync_all()?;
+        Ok(())
     }
 }
 
@@ -342,7 +437,133 @@ pub fn export_manifest(
     format: ExportFormat,
     filter: &ExportFilter,
 ) -> VerifyResult<u64> {
-    Err(VerifyError::NotImplemented("export_manifest"))
+    use std::io::{BufRead, Write};
+    if manifest == out {
+        return Err(VerifyError::Invalid(
+            "export must not overwrite the source manifest",
+        ));
+    }
+    if let Some(under) = &filter.under {
+        validate_rel_path(under)?;
+    }
+    let mut lines = std::io::BufReader::new(std::fs::File::open(manifest)?).lines();
+    let mut header: ManifestHeader = serde_json::from_str(
+        &lines
+            .next()
+            .ok_or(VerifyError::Invalid("missing manifest header"))??,
+    )?;
+    header.created_at = Timestamp::now();
+    header.run_id = filter.run_id;
+    if filter.strip_session_origin {
+        header.privacy.session_origin_included = false;
+    }
+    if filter.strip_url_query {
+        header.privacy.url_query = UrlQueryPrivacy::Dropped;
+    }
+    let mut records = Vec::new();
+    for line in lines {
+        let mut record: ManifestFile = serde_json::from_str(&line?)?;
+        validate_rel_path(&record.path)?;
+        if filter.run_id.is_some_and(|id| record.run_id != Some(id))
+            || filter.since.is_some_and(|t| record.retrieved_at < t)
+            || filter.under.as_ref().is_some_and(|p| {
+                record.path != *p
+                    && !record
+                        .path
+                        .starts_with(&format!("{}/", p.trim_end_matches('/')))
+            })
+        {
+            continue;
+        }
+        apply_privacy(
+            &mut record,
+            filter.strip_session_origin,
+            filter.strip_url_query,
+        )?;
+        records.push(record);
+    }
+    let mut output = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(out)?;
+    match format {
+        ExportFormat::Jsonl => {
+            serde_json::to_writer(&mut output, &header)?;
+            output.write_all(b"\n")?;
+            for r in &records {
+                serde_json::to_writer(&mut output, r)?;
+                output.write_all(b"\n")?;
+            }
+        }
+        ExportFormat::Csv => {
+            output.write_all(b"path,size_bytes,sha256,blake3,url,retrieved_at,quarantined\n")?;
+            for r in &records {
+                let fields = [
+                    r.path.clone(),
+                    r.size_bytes.to_string(),
+                    r.sha256.to_string(),
+                    r.blake3.to_string(),
+                    r.source.url.to_string(),
+                    r.retrieved_at.to_rfc3339(),
+                    r.quarantined.to_string(),
+                ];
+                let escaped: Vec<_> = fields
+                    .iter()
+                    .map(|s| format!("\"{}\"", s.replace('"', "\"\"")))
+                    .collect();
+                writeln!(output, "{}", escaped.join(","))?;
+            }
+        }
+        ExportFormat::ProvJson => {
+            let entities:serde_json::Map<_,_>=records.iter().map(|r|(format!("zeus:{}",r.sha256),serde_json::json!({"prov:label":r.path,"zeus:sha256":r.sha256,"zeus:source":r.source.url,"zeus:size":r.size_bytes}))).collect();
+            serde_json::to_writer_pretty(
+                &mut output,
+                &serde_json::json!({"prefix":{"zeus":"https://zeus.download/ns/","prov":"http://www.w3.org/ns/prov#"},"entity":entities}),
+            )?;
+        }
+        ExportFormat::Croissant => {
+            let distributions:Vec<_>=records.iter().map(|r|serde_json::json!({"@type":"cr:FileObject","@id":r.path,"name":r.path,"contentUrl":r.path,"contentSize":r.size_bytes,"sha256":r.sha256,"encodingFormat":r.media_type})).collect();
+            serde_json::to_writer_pretty(
+                &mut output,
+                &serde_json::json!({"@context":{"@vocab":"https://schema.org/","cr":"http://mlcommons.org/croissant/"},"@type":"Dataset","name":header.root_label.clone().unwrap_or_else(||"Zeus export".into()),"conformsTo":"http://mlcommons.org/croissant/1.0","distribution":distributions}),
+            )?;
+        }
+    }
+    output.sync_all()?;
+    Ok(records.len() as u64)
+}
+
+fn apply_privacy(
+    record: &mut ManifestFile,
+    strip_session: bool,
+    strip_query: bool,
+) -> VerifyResult<()> {
+    if strip_session {
+        record.session_origin = None;
+    }
+    if strip_query {
+        fn strict(url: &RedactedUrl) -> VerifyResult<RedactedUrl> {
+            RedactedUrl::new(
+                &zeus_types::redact::redact_url(
+                    &url.to_string(),
+                    zeus_types::redact::RedactMode::Strict,
+                )
+                .url,
+            )
+            .map_err(|_| VerifyError::Invalid("invalid manifest URL"))
+        }
+        record.source.url = strict(&record.source.url)?;
+        record.source.final_url = strict(&record.source.final_url)?;
+        record.source.referrer = record.source.referrer.as_ref().map(strict).transpose()?;
+        record.license.evidence_url = record
+            .license
+            .evidence_url
+            .as_ref()
+            .map(strict)
+            .transpose()?;
+        record.source.url_redacted = true;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
