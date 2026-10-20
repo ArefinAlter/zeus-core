@@ -315,6 +315,9 @@ error_codes! {
     POLICY_ROBOTS_DISALLOWED = "policy.robots_disallowed", PolicyDenied, false;
     POLICY_QUARANTINE_BLOCKED = "policy.quarantine_blocked", PolicyDenied, false;
     POLICY_TOO_MANY_PENDING = "policy.too_many_pending", Unavailable, true;
+    // 07 section 12: approval decisions and requests that would raise approvals
+    POLICY_RECENTLY_DENIED = "policy.recently_denied", PolicyDenied, false;
+    POLICY_CONFIRMATION_REQUIRED = "policy.confirmation_required", Unauthenticated, false;
     // 13 section 17: content-addressed artifact store
     ARTIFACT_NOT_FOUND = "artifact.not_found", NotFound, false;
     ARTIFACT_OBJECT_ABSENT = "artifact.object_absent", NotFound, false;
