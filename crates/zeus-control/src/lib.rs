@@ -4,9 +4,11 @@
 //! generator directly: time comes from an injected [`Clock`] (or an explicit monotonic argument) and
 //! randomness from a [`RandomSource`]. That makes every algorithm exactly reproducible in tests.
 //!
-//! Implemented modules include clocks, randomness, ranges, backoff, EWMA, AIMD, segment planning,
-//! limiters and fairness. Advanced estimators, mirror selection, hedging, reliability math and CUSUM
-//! still expose typed `NotImplemented` results; the engine does not depend on them for basic transfers.
+//! Modules: clocks, randomness, ranges, backoff, EWMA, AIMD, segment planning, limiters, fairness,
+//! throughput and ETA estimation (windowed rate, Kalman), mirror selection (UCB1, Thompson,
+//! sliding-window UCB), P-squared hedging, reliability math and CUSUM throttle detection. The engine uses
+//! the core of these for basic transfers; the advanced selectors are available for scheduling work that
+//! does not call them yet.
 
 #![forbid(unsafe_code)]
 
