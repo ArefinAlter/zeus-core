@@ -1072,7 +1072,7 @@ impl Engine {
             .journal
             .read(|t| t.approval(resolution.approval.id))?
             .ok_or(EngineError::NotFound { what: "approval" })?;
-        let id = approval.job_id.ok_or_else(|| {
+        let id = resolution.job_id.or(approval.job_id).ok_or_else(|| {
             rejected(
                 codes::API_INVALID_TRANSITION,
                 "approval does not name a job",
