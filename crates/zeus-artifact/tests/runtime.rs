@@ -215,6 +215,43 @@ fn quota_and_untrusted_lineage_fail_without_artifacts() {
     ));
 }
 
+#[test]
+fn newest_first_listing_bounds_kept_records_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("source");
+    let store = open(&dir.path().join("store"), vec![], 1000);
+    for content in [&b"one"[..], b"two", b"three", b"four"] {
+        std::fs::write(&source, content).unwrap();
+        store.ingest(&source, draft(), None).unwrap();
+    }
+    let mut ids: Vec<_> = store
+        .list(&ArtifactFilter::default())
+        .unwrap()
+        .into_iter()
+        .map(|a| a.id)
+        .collect();
+    ids.reverse();
+    let bounded = ArtifactFilter {
+        limit: 2,
+        ..ArtifactFilter::default()
+    };
+    let newest: Vec<_> = store
+        .list_newest_where(&bounded, |_| true)
+        .unwrap()
+        .into_iter()
+        .map(|a| a.id)
+        .collect();
+    assert_eq!(newest, ids[..2]);
+    // A record the caller drops does not use up the bound.
+    let kept: Vec<_> = store
+        .list_newest_where(&bounded, |a| a.id != ids[0])
+        .unwrap()
+        .into_iter()
+        .map(|a| a.id)
+        .collect();
+    assert_eq!(kept, ids[1..3]);
+}
+
 #[derive(Debug)]
 struct CrashFs {
     stage: usize,
