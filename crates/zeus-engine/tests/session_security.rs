@@ -296,6 +296,7 @@ async fn approve(r: &Rig, mut a: Approval) -> GrantId {
         .apply_approval(ApprovalResolution {
             approval: a,
             grant: Some(grant),
+            job_id: None,
         })
         .await
         .unwrap();
@@ -328,7 +329,8 @@ async fn session_requires_durable_approval_and_secrets_do_not_cross_redirects_or
         r.engine
             .apply_approval(ApprovalResolution {
                 approval: forged,
-                grant: None
+                grant: None,
+                job_id: None,
             })
             .await
             .is_err()

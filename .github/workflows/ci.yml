@@ -32,8 +32,8 @@ jobs:
         shell: bash
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
-          # Companion specs and API at the pre-alpha runtime foundation. Advance with coordinated changes.
-          COMPANION_REF: b2ce507c31bf07edd6dacd5d0d97e750cf7ef64b
+          # Companion supports ApprovalResolution.job_id; its specs match this stack stage.
+          COMPANION_REF: 8a2f8e2d6c68116e07082a8f20f129d7eb89ce54
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --heads https://github.com/ArefinAlter/zeus.git "$BRANCH" >/dev/null 2>&1; then
