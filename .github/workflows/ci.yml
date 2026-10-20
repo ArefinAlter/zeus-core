@@ -1,0 +1,130 @@
+# Required checks for the zeus-core engine workspace. The spec fixtures are copies of the zeus repository's
+# docs/spec (public), so the fixture job checks zeus out beside this repository: the branch with the same name
+# when it exists, otherwise main. The downstream job builds the zeus app against this core change, because
+# the engine's public API is a contract with two consumers (ADR 0011 in the zeus repository).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  app-ref:
+    name: Resolve zeus ref
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+    steps:
+      - id: resolve
+        shell: bash
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads https://github.com/ArefinAlter/zeus.git "$BRANCH" >/dev/null 2>&1; then
+            ref="$BRANCH"
+          else
+            ref="main"
+          fi
+          echo "zeus ref: $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --all-features --locked
+      - name: Generated schemas are current
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo run -p zeus-types --example gen_schemas --locked
+          git diff --exit-code -- schemas
+
+  msrv:
+    name: MSRV 1.90
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      # The checked-in rust-toolchain.toml selects stable; the override pins the MSRV for this job.
+      - run: cargo +1.90.0 check --workspace --all-features --locked
+
+  fixtures:
+    name: Spec fixtures match zeus docs/spec
+    needs: app-ref
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: zeus-core
+      - uses: actions/checkout@v5
+        with:
+          repository: ArefinAlter/zeus
+          ref: ${{ needs.app-ref.outputs.ref }}
+          path: zeus
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - working-directory: zeus-core
+        run: node scripts/sync-spec-fixtures.mjs --check ../zeus
+
+  downstream:
+    name: zeus app builds against this core
+    needs: app-ref
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: zeus-core
+      - uses: actions/checkout@v5
+        with:
+          repository: ArefinAlter/zeus
+          ref: ${{ needs.app-ref.outputs.ref }}
+          path: zeus
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zeus
+      - working-directory: zeus
+        run: cargo check --workspace --all-features --all-targets --locked
+
+  deny:
+    name: Dependencies, licenses and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
