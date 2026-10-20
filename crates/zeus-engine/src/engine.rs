@@ -523,6 +523,17 @@ impl Engine {
                 })?;
             }
             if let Some(approval) = &approval {
+                // A batch join is the next revision of a pending approval (07 section 4.7). A decision committed
+                // after the approval manager read it wins; the enqueue fails rather than reopening it.
+                if let Some(revision) = approval.revision.filter(|r| *r > 1) {
+                    let current = t.approval(approval.id)?;
+                    if !current.is_some_and(|c| {
+                        c.state == ApprovalState::Pending
+                            && c.revision.unwrap_or(1).saturating_add(1) == revision
+                    }) {
+                        return Err(zeus_journal::JournalError::Invariant("approval changed"));
+                    }
+                }
                 t.put_approval(approval)?;
             }
             let created = t.append_event(
@@ -860,11 +871,21 @@ impl Engine {
         });
         let (result, events) = self.inner.journal.transact(|t| {
             let mut before = vec![];
+            // A batched approval (07 section 4.7) stays open while another job still waits for it; the decision
+            // skips the canceled job when it is applied.
             if action == ControlAction::Cancel
                 && actual.job.state == JobState::AwaitingApproval
                 && let Some(approval_id) = actual.job.approval_id
                 && let Some(mut approval) = t.approval(approval_id)?
                 && approval.state == ApprovalState::Pending
+                && !t
+                    .jobs(&zeus_journal::JobFilter {
+                        states: Some(vec![JobState::AwaitingApproval]),
+                        after: None,
+                        limit: None,
+                    })?
+                    .iter()
+                    .any(|r| r.job.id != id && r.job.approval_id == Some(approval_id))
             {
                 approval.state = ApprovalState::Canceled;
                 approval.decided_at = Some(now);

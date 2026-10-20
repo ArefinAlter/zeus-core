@@ -55,6 +55,51 @@ impl ApprovalPort for Approvals {
         Ok(())
     }
 }
+/// Joins every request after the first to the pending approval as its next revision, as the daemon batches
+/// (07 section 4.7). With `race` set, a person approves the stored revision between the join and the engine's write.
+struct JoiningApprovals {
+    first: Approvals,
+    journal: Journal,
+    pending: Mutex<Option<Approval>>,
+    race: std::sync::atomic::AtomicBool,
+}
+#[async_trait]
+impl ApprovalPort for JoiningApprovals {
+    async fn request(&self, r: ApprovalRequest) -> Result<Approval, ErrorEnvelope> {
+        let pending = self.pending.lock().unwrap().clone();
+        let Some(stored) = pending else {
+            let a = self.first.request(r).await?;
+            *self.pending.lock().unwrap() = Some(a.clone());
+            return Ok(a);
+        };
+        if self.race.load(Ordering::SeqCst) {
+            let mut decided = stored.clone();
+            decided.state = ApprovalState::Approved;
+            self.journal.transact(|t| t.put_approval(&decided)).unwrap();
+        }
+        let mut joined = stored;
+        joined.revision = joined.revision.map(|v| v + 1);
+        *self.pending.lock().unwrap() = Some(joined.clone());
+        Ok(joined)
+    }
+    async fn withdraw(&self, _: ApprovalId) -> Result<(), ErrorEnvelope> {
+        Ok(())
+    }
+}
+async fn joining_rig(race: bool) -> Rig {
+    rig_with(false, true, None, move |clock, journal| {
+        Arc::new(JoiningApprovals {
+            first: Approvals {
+                clock,
+                ids: IdGenerator::new(),
+            },
+            journal,
+            pending: Mutex::new(None),
+            race: race.into(),
+        })
+    })
+    .await
+}
 struct Browser {
     clock: SharedClock,
     audit: Arc<MemoryAuditLog>,
@@ -182,6 +227,20 @@ async fn rig_with_proxy(
     connected: bool,
     proxy: Option<Arc<dyn ProxyFetch>>,
 ) -> Rig {
+    rig_with(redirect, connected, proxy, |clock, _| {
+        Arc::new(Approvals {
+            clock,
+            ids: IdGenerator::new(),
+        })
+    })
+    .await
+}
+async fn rig_with(
+    redirect: bool,
+    connected: bool,
+    proxy: Option<Arc<dyn ProxyFetch>>,
+    approvals: impl FnOnce(SharedClock, Journal) -> Arc<dyn ApprovalPort>,
+) -> Rig {
     let dir = TempDir::new().unwrap();
     let root = dir.path().join("downloads");
     std::fs::create_dir_all(&root).unwrap();
@@ -220,10 +279,7 @@ async fn rig_with_proxy(
         .transport(transport.clone())
         .session_provider(browser.clone())
         .audit(audit)
-        .approvals(Arc::new(Approvals {
-            clock,
-            ids: IdGenerator::new(),
-        }));
+        .approvals(approvals(clock, journal.clone()));
     if let Some(proxy) = proxy {
         builder = builder.proxy_fetch(proxy);
     }
@@ -237,6 +293,9 @@ async fn rig_with_proxy(
     }
 }
 async fn enqueue(r: &Rig) -> EnqueueOutcome {
+    try_enqueue(r).await.unwrap()
+}
+async fn try_enqueue(r: &Rig) -> Result<EnqueueOutcome, EngineError> {
     let mut spec = JobSpec::new(
         HttpUrl::parse("https://source.example/file.bin").unwrap(),
         Source::new(SourceKind::Cli),
@@ -252,7 +311,6 @@ async fn enqueue(r: &Rig) -> EnqueueOutcome {
             },
         })
         .await
-        .unwrap()
 }
 async fn approve(r: &Rig, mut a: Approval) -> GrantId {
     let now = Timestamp::now();
@@ -661,5 +719,49 @@ async fn control_receipt_preserves_original_state_sequence_and_never_reapplies_p
         serde_json::to_value(event).unwrap()["data"]["actor"]["kind"],
         "human"
     );
+    r.engine.shutdown().await.unwrap();
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn canceling_one_batched_job_keeps_the_approval_open_for_the_others() {
+    let r = joining_rig(false).await;
+    let first = enqueue(&r).await;
+    let second = enqueue(&r).await;
+    let approval_id = first.job.approval_id.unwrap();
+    assert_eq!(second.job.approval_id, Some(approval_id));
+    let approval = |r: &Rig| {
+        r.journal
+            .read(|t| t.approval(approval_id))
+            .unwrap()
+            .unwrap()
+    };
+    r.engine
+        .control(first.job.id, ControlAction::Cancel)
+        .await
+        .unwrap();
+    assert_eq!(approval(&r).state, ApprovalState::Pending);
+    let waiting = r.engine.get(second.job.id).await.unwrap();
+    assert_eq!(waiting.state, JobState::AwaitingApproval);
+    assert_eq!(waiting.approval_id, Some(approval_id));
+    // The last job leaving cancels the approval.
+    r.engine
+        .control(second.job.id, ControlAction::Cancel)
+        .await
+        .unwrap();
+    assert_eq!(approval(&r).state, ApprovalState::Canceled);
+    r.engine.shutdown().await.unwrap();
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_batch_join_never_reopens_an_approval_decided_meanwhile() {
+    let r = joining_rig(true).await;
+    let first = enqueue(&r).await;
+    let approval_id = first.job.approval_id.unwrap();
+    assert!(try_enqueue(&r).await.is_err());
+    let stored = r
+        .journal
+        .read(|t| t.approval(approval_id))
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.state, ApprovalState::Approved);
+    assert_eq!(stored.revision, Some(1));
     r.engine.shutdown().await.unwrap();
 }

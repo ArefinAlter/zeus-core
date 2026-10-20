@@ -482,6 +482,24 @@ pub struct ArtifactFilter {
     /// Maximum records; capped at 10,000.
     pub limit: usize,
 }
+
+impl ArtifactFilter {
+    /// Whether a stored record passes the state, digest, job and run filters.
+    pub(crate) fn matches(&self, a: &Artifact) -> bool {
+        (self.include_deleted || a.state == ArtifactState::Active)
+            && self.blake3.is_none_or(|d| a.blake3 == d)
+            && self.job_id.is_none_or(|id| a.job_id == Some(id))
+            && self.run_id.is_none_or(|id| a.run_id == Some(id))
+    }
+    /// The record bound: 100 when unset, at most 10,000.
+    pub(crate) fn bound(&self) -> usize {
+        if self.limit == 0 {
+            100
+        } else {
+            self.limit.min(10_000)
+        }
+    }
+}
 /// Result of a bounded graph traversal.
 #[derive(Debug, Clone)]
 pub struct Lineage {
