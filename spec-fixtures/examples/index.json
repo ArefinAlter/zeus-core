@@ -81,18 +81,18 @@
     "chain": false
   },
   {
-    "file": "examples/01-L876.jsonl",
+    "file": "examples/01-L878.jsonl",
     "doc": "01-domain-model.md",
-    "line": 876,
+    "line": 878,
     "schema": "domain",
     "def": "Event",
     "kind": "jsonl",
     "chain": false
   },
   {
-    "file": "examples/01-L896.jsonl",
+    "file": "examples/01-L898.jsonl",
     "doc": "01-domain-model.md",
-    "line": 896,
+    "line": 898,
     "schema": "domain",
     "def": "Event",
     "kind": "jsonl",
@@ -783,38 +783,29 @@
     "chain": false
   },
   {
-    "file": "examples/05-L944.json",
+    "file": "examples/05-L948.json",
     "doc": "05-daemon-api-v1.md",
-    "line": 944,
+    "line": 948,
     "schema": "daemon-api.v1",
     "def": "AuditTailResponse",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/05-L958.json",
+    "file": "examples/05-L962.json",
     "doc": "05-daemon-api-v1.md",
-    "line": 958,
+    "line": 962,
     "schema": "daemon-api.v1",
     "def": "ConfigGetResponse",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/05-L970.json",
+    "file": "examples/05-L974.json",
     "doc": "05-daemon-api-v1.md",
-    "line": 970,
+    "line": 974,
     "schema": "daemon-api.v1",
     "def": "DoctorRunResponse",
-    "kind": "json",
-    "chain": false
-  },
-  {
-    "file": "examples/05-L997.json",
-    "doc": "05-daemon-api-v1.md",
-    "line": 997,
-    "schema": "daemon-api.v1",
-    "def": "Request",
     "kind": "json",
     "chain": false
   },
@@ -823,16 +814,16 @@
     "doc": "05-daemon-api-v1.md",
     "line": 1001,
     "schema": "daemon-api.v1",
-    "def": "ClientsAddResponse",
+    "def": "Request",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/05-L1036.json",
+    "file": "examples/05-L1005.json",
     "doc": "05-daemon-api-v1.md",
-    "line": 1036,
+    "line": 1005,
     "schema": "daemon-api.v1",
-    "def": "ClientNotification",
+    "def": "ClientsAddResponse",
     "kind": "json",
     "chain": false
   },
@@ -846,36 +837,45 @@
     "chain": false
   },
   {
-    "file": "examples/05-L1044.jsonl",
+    "file": "examples/05-L1044.json",
     "doc": "05-daemon-api-v1.md",
     "line": 1044,
+    "schema": "daemon-api.v1",
+    "def": "ClientNotification",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/05-L1048.jsonl",
+    "doc": "05-daemon-api-v1.md",
+    "line": 1048,
     "schema": "daemon-api.v1",
     "def": "ServerNotification",
     "kind": "jsonl",
     "chain": false
   },
   {
-    "file": "examples/05-L1181.json",
+    "file": "examples/05-L1187.json",
     "doc": "05-daemon-api-v1.md",
-    "line": 1181,
+    "line": 1187,
     "schema": "daemon-api.v1",
     "def": "ErrorResponse",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/05-L1185.json",
+    "file": "examples/05-L1191.json",
     "doc": "05-daemon-api-v1.md",
-    "line": 1185,
+    "line": 1191,
     "schema": "daemon-api.v1",
     "def": "ErrorResponse",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/05-L1189.json",
+    "file": "examples/05-L1195.json",
     "doc": "05-daemon-api-v1.md",
-    "line": 1189,
+    "line": 1195,
     "schema": "daemon-api.v1",
     "def": "ErrorResponse",
     "kind": "json",
@@ -1314,144 +1314,144 @@
     "chain": false
   },
   {
-    "file": "examples/07-L591.json",
+    "file": "examples/07-L593.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 591,
+    "line": 593,
     "schema": "approvals.v1",
     "def": "ApprovalDecision",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L603.json",
+    "file": "examples/07-L605.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 603,
+    "line": 605,
     "schema": "approvals.v1",
     "def": "ApprovalDecision",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L639.json",
+    "file": "examples/07-L641.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 639,
+    "line": 641,
     "schema": "approvals.v1",
     "def": "DecisionRecord",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L671.json",
+    "file": "examples/07-L673.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 671,
+    "line": 673,
     "schema": "approvals.v1",
     "def": "DecisionRecord",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L695.json",
+    "file": "examples/07-L697.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 695,
+    "line": 697,
     "schema": "approvals.v1",
     "def": "DecisionRecord",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L820.json",
+    "file": "examples/07-L822.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 820,
+    "line": 822,
     "schema": "approvals.v1",
     "def": "GrantRecord",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L839.json",
+    "file": "examples/07-L841.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 839,
+    "line": 841,
     "schema": "approvals.v1",
     "def": "GrantRecord",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L866.json",
+    "file": "examples/07-L868.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 866,
+    "line": 868,
     "schema": "approvals.v1",
     "def": "GrantRecord",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L888.json",
+    "file": "examples/07-L890.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 888,
+    "line": 890,
     "schema": "domain",
     "def": "Event",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L925.json",
+    "file": "examples/07-L927.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 925,
+    "line": 927,
     "schema": "approvals.v1",
     "def": "GrantRecord",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L952.json",
+    "file": "examples/07-L954.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 952,
+    "line": 954,
     "schema": "approvals.v1",
     "def": "GrantRecord",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L1064.json",
+    "file": "examples/07-L1066.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 1064,
+    "line": 1066,
     "schema": "native-messaging.v1",
     "def": "ExtensionToDaemonMessage",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L1185.json",
+    "file": "examples/07-L1187.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 1185,
+    "line": 1187,
     "schema": "approvals.v1",
     "def": "KillSwitchRequest",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L1189.json",
+    "file": "examples/07-L1191.json",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 1189,
+    "line": 1191,
     "schema": "approvals.v1",
     "def": "KillSwitchResult",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/07-L1193.jsonl",
+    "file": "examples/07-L1195.jsonl",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 1193,
+    "line": 1195,
     "schema": "domain",
     "def": "Event",
     "kind": "jsonl",
     "chain": false
   },
   {
-    "file": "examples/07-L1427.jsonl",
+    "file": "examples/07-L1429.jsonl",
     "doc": "07-approvals-trust-surface-and-consent.md",
-    "line": 1427,
+    "line": 1429,
     "schema": "domain",
     "def": "Event",
     "kind": "jsonl",

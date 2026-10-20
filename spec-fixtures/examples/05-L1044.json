@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","method":"nm.frame","params":{"source":"host","frame":{"v":1,"id":"h1","re":"d7","type":"error","body":{"error":{"code":"nm.frame_too_large","class":"invalid_request","message":"A daemon frame exceeded 1000000 bytes and was dropped.","retryable":false,"details":{"limit_bytes":1000000}}}}}}
