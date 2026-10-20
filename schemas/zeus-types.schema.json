@@ -74,6 +74,13 @@
     "Approval": {
       "description": "A request for a human decision (01 section 5.3). Immutable once decided.",
       "properties": {
+        "agent_says": {
+          "description": "Untrusted requester annotation, shown separately from trusted facts.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "allowed_scopes": {
           "description": "Scopes a human may choose.",
           "items": {
@@ -111,6 +118,14 @@
           "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
           "type": "string"
         },
+        "facts": {
+          "additionalProperties": true,
+          "description": "Daemon-computed facts, present only on full approval views.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "id": {
           "description": "Identifier.",
           "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
@@ -143,6 +158,30 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "request_hash": {
+          "description": "Daemon-computed BLAKE3 over canonical approval facts.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requested_by": {
+          "description": "Authenticated requesting credential, independent of display text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "description": "Revision bound into the decision.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "run_id": {
           "description": "The run concerned.",
@@ -253,6 +292,11 @@
           "const": "destructive_op",
           "description": "A file operation that deletes or overwrites.",
           "type": "string"
+        },
+        {
+          "const": "cloud_delivery",
+          "description": "One exact source, cloud account revision, destination, mode and budget.",
+          "type": "string"
         }
       ]
     },
@@ -261,7 +305,7 @@
       "properties": {
         "approval": {
           "$ref": "#/$defs/Approval",
-          "description": "The approval, with daemon-computed facts."
+          "description": "Public approval entity; private facts and requester annotations never enter events."
         }
       },
       "required": [
@@ -1535,6 +1579,15 @@
           "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
           "type": "string"
         },
+        "eta_s": {
+          "description": "Estimated seconds remaining.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "filename": {
           "default": null,
           "description": "The resolved or hinted name. Untrusted text.",
@@ -1570,9 +1623,33 @@
             "null"
           ]
         },
+        "path": {
+          "description": "Completed local file path.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "quarantined": {
           "description": "Quarantine flag.",
           "type": "boolean"
+        },
+        "rate_ewma": {
+          "description": "Current transfer rate in bytes per second.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sha256": {
+          "description": "Completed SHA-256 digest.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "source_kind": {
           "$ref": "#/$defs/SourceKind",
@@ -1581,6 +1658,15 @@
         "state": {
           "$ref": "#/$defs/JobState",
           "description": "Current state."
+        },
+        "state_seq": {
+          "description": "Durable event that placed the job in its current state, filled by the daemon.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "updated_at": {
           "description": "Last change.",
@@ -2228,6 +2314,26 @@
       ],
       "type": "object"
     },
+    "RevocationReason": {
+      "description": "Recorded cause for a grant revocation.",
+      "oneOf": [
+        {
+          "const": "user_request",
+          "description": "Explicit human action.",
+          "type": "string"
+        },
+        {
+          "const": "kill_switch",
+          "description": "Daemon kill switch.",
+          "type": "string"
+        },
+        {
+          "const": "origin_blocked",
+          "description": "A never grant blocks the origin.",
+          "type": "string"
+        }
+      ]
+    },
     "Segment": {
       "description": "A planned work unit over the half-open interval `[start, end)`.",
       "properties": {
@@ -2358,6 +2464,25 @@
           "minimum": 0,
           "type": "integer"
         },
+        "renewed_at": {
+          "description": "Latest human renewal time.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revocation_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevocationReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Reason for the revocation."
+        },
         "revoked_at": {
           "default": null,
           "description": "When it was revoked.",
@@ -2366,6 +2491,17 @@
             "string",
             "null"
           ]
+        },
+        "revoked_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Actor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Actor who revoked this consent."
         },
         "run_id": {
           "description": "For `workflow`.",
@@ -2739,6 +2875,11 @@
           "const": "crash_loop",
           "description": "Startup recovery gave up (crash loop).",
           "type": "string"
+        },
+        {
+          "const": "workflow_runner",
+          "description": "A workflow runner changed the job lifecycle.",
+          "type": "string"
         }
       ]
     },
@@ -2864,6 +3005,16 @@
         {
           "const": "cli_interactive",
           "description": "An interactive CLI prompt on the controlling terminal.",
+          "type": "string"
+        },
+        {
+          "const": "gui",
+          "description": "The native desktop trust surface.",
+          "type": "string"
+        },
+        {
+          "const": "os_notification",
+          "description": "A trusted operating-system notification.",
           "type": "string"
         },
         {

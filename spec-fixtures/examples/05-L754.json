@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":10,"error":{"code":-32004,"message":"pause is not allowed in state completed.","data":{"code":"api.invalid_transition","class":"conflict","message":"pause is not allowed in state completed.","retryable":false,"details":{"state":"completed","action":"pause"}}}}

@@ -1,0 +1,28 @@
+[package]
+name = "zeus-artifact"
+description = "Content-addressed artifacts, durable ingest, materialization, integrity, and retention."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+zeus-types.workspace = true
+zeus-fs.workspace = true
+zeus-verify.workspace = true
+zeus-control.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+redb.workspace = true
+
+[dev-dependencies]
+zeus-types = { workspace = true, features = ["spec-testing"] }
+tempfile.workspace = true
+jsonschema.workspace = true
+
+[lints]
+workspace = true

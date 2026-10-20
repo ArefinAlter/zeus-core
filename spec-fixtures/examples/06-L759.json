@@ -1,0 +1,7 @@
+{
+  "dry_run": false,
+  "jobs": [
+    { "error": { "code": "policy.path_outside_roots", "class": "policy_denied", "retryable": false }, "next": { "action": "fix_destination" } }
+  ],
+  "note": "Some entries were rejected; see their error and next."
+}

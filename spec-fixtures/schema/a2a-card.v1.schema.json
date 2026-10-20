@@ -1,0 +1,1045 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeus.invalid/schema/a2a-card.v1",
+  "title": "Zeus A2A card, task mapping and endpoint configuration v1",
+  "description": "The A2A 1.0 objects Zeus emits (camelCase, because the A2A specification fixes that spelling) and the Zeus-defined records beside them (snake_case, 00-conventions section 3). Normative text: docs/spec/10-a2a-agent-card-and-task-mapping.md. A2A members Zeus never emits (raw parts, deprecated OAuth flows, gRPC interfaces) are rejected here. Receivers still ignore unknown members (00-conventions section 4 rule 7); this schema forbids them only where a closed vocabulary is the point (skill inputs, labels, the Zeus extension record).",
+  "$defs": {
+    "ExtensionUri": {
+      "description": "URI of the one A2A extension Zeus declares. It is also the key under which Zeus puts its records into A2A metadata objects (A2A 1.0 section 4.6.2).",
+      "const": "https://zeus.invalid/a2a/ext/job/v1"
+    },
+    "PeerName": {
+      "description": "Operator-chosen name of a peer. A configuration key, not an identifier minted by the daemon (00-conventions section 5.1).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+    },
+    "MediaType": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"
+    },
+    "HttpUrl": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 2048,
+      "pattern": "^https?://[^\\s]+$"
+    },
+    "HttpsUrl": {
+      "description": "https URL without userinfo or fragment.",
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2048,
+      "pattern": "^https://[^\\s@#]+$"
+    },
+    "SkillId": {
+      "enum": ["fetch_file", "rescue_download", "organize_files", "convert_files"]
+    },
+    "TrustLevel": {
+      "description": "How much Zeus trusts a peer. Only a human on a trust surface changes it (10 section 4).",
+      "enum": ["unknown", "known", "delegate"]
+    },
+    "TaskState": {
+      "description": "A2A 1.0 TaskState, spelled as the protobuf enum (ProtoJSON).",
+      "enum": [
+        "TASK_STATE_UNSPECIFIED",
+        "TASK_STATE_SUBMITTED",
+        "TASK_STATE_WORKING",
+        "TASK_STATE_COMPLETED",
+        "TASK_STATE_FAILED",
+        "TASK_STATE_CANCELED",
+        "TASK_STATE_INPUT_REQUIRED",
+        "TASK_STATE_REJECTED",
+        "TASK_STATE_AUTH_REQUIRED"
+      ]
+    },
+    "Role": {
+      "enum": ["ROLE_UNSPECIFIED", "ROLE_USER", "ROLE_AGENT"]
+    },
+
+    "Part": {
+      "description": "A2A 1.0 Part: exactly one of text, raw, url, data is present (member presence is the discriminator; there is no kind member). Used for messages Zeus receives. Zeus rejects raw.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "raw": { "type": "string", "description": "Base64 bytes. Zeus never sends or accepts inline file bytes." },
+        "url": { "type": "string", "maxLength": 8192 },
+        "data": {},
+        "metadata": { "type": "object" },
+        "filename": { "type": "string", "maxLength": 255 },
+        "mediaType": { "$ref": "#/$defs/MediaType" }
+      },
+      "oneOf": [
+        { "required": ["text"] },
+        { "required": ["raw"] },
+        { "required": ["url"] },
+        { "required": ["data"] }
+      ]
+    },
+    "Message": {
+      "description": "A2A 1.0 Message as received from a peer. At most 8 parts (10 section 5.7).",
+      "type": "object",
+      "required": ["messageId", "role", "parts"],
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "contextId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "taskId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "role": { "$ref": "#/$defs/Role" },
+        "parts": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/Part" } },
+        "metadata": { "type": "object" },
+        "extensions": { "type": "array", "items": { "type": "string", "maxLength": 512 } },
+        "referenceTaskIds": { "type": "array", "items": { "type": "string", "maxLength": 256 } }
+      }
+    },
+    "TextPart": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "mediaType": { "const": "text/plain" }
+      }
+    },
+    "DataPart": {
+      "type": "object",
+      "required": ["data"],
+      "properties": {
+        "data": {},
+        "mediaType": { "const": "application/json" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "AgentMessage": {
+      "description": "A Message written by Zeus. Text is a fixed daemon template and never contains remote-derived strings; structured facts go in data parts (10 section 8.4).",
+      "type": "object",
+      "required": ["messageId", "contextId", "role", "parts"],
+      "properties": {
+        "messageId": { "type": "string", "pattern": "^zm_[0-9a-f]{32}$" },
+        "contextId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "taskId": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "role": { "const": "ROLE_AGENT" },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": { "oneOf": [{ "$ref": "#/$defs/TextPart" }, { "$ref": "#/$defs/DataPart" }] }
+        },
+        "extensions": { "type": "array", "items": { "$ref": "#/$defs/ExtensionUri" } }
+      }
+    },
+
+    "NeedKind": { "enum": ["session", "url", "proxy"] },
+    "SuggestedAction": {
+      "description": "01 section 9.1 suggested_next.action values that make sense to a peer.",
+      "enum": ["retry", "approve", "request_session", "open_in_browser", "free_disk_space", "fix_destination", "check_url", "none"]
+    },
+    "ZeusTaskMetadata": {
+      "description": "Value of Task.metadata[ExtensionUri] and of statusUpdate.metadata[ExtensionUri]: the Zeus facts a peer cannot express in A2A terms. Built from the redacted job view only (10 section 8.5).",
+      "type": "object",
+      "required": ["v", "job_id", "job_state"],
+      "properties": {
+        "v": { "const": 1 },
+        "job_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "job_state": { "$ref": "https://zeus.invalid/schema/domain#/$defs/JobState" },
+        "attempt": { "type": "integer", "minimum": 0 },
+        "quarantined": { "type": "boolean" },
+        "run_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" },
+        "approval": {
+          "type": "object",
+          "required": ["approval_id", "kind", "expires_at"],
+          "properties": {
+            "approval_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId" },
+            "kind": { "$ref": "https://zeus.invalid/schema/domain#/$defs/ApprovalKind" },
+            "expires_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+            "allowed_scopes": { "type": "array", "items": { "$ref": "https://zeus.invalid/schema/domain#/$defs/GrantScope" }, "uniqueItems": true },
+            "reason_codes": { "type": "array", "items": { "$ref": "https://zeus.invalid/schema/common#/$defs/CapabilityName" } }
+          }
+        },
+        "need": { "$ref": "#/$defs/NeedKind" },
+        "wait_deadline_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "progress": {
+          "type": "object",
+          "required": ["bytes_done", "bytes_total"],
+          "properties": {
+            "bytes_done": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+            "bytes_total": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" }, { "type": "null" }] },
+            "rate_ewma": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+            "eta_s": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] }
+          }
+        },
+        "retry": {
+          "type": "object",
+          "required": ["next_attempt_at", "restart_from_zero"],
+          "properties": {
+            "next_attempt_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
+            "restart_from_zero": { "type": "boolean" }
+          }
+        },
+        "transport": { "$ref": "https://zeus.invalid/schema/domain#/$defs/Transport" },
+        "suggested_next": {
+          "type": "object",
+          "required": ["action"],
+          "properties": { "action": { "$ref": "#/$defs/SuggestedAction" } }
+        },
+        "blocking_timed_out": { "type": "boolean" }
+      }
+    },
+    "ZeusMetadata": {
+      "description": "A2A metadata object carrying only the Zeus extension record.",
+      "type": "object",
+      "required": ["https://zeus.invalid/a2a/ext/job/v1"],
+      "properties": {
+        "https://zeus.invalid/a2a/ext/job/v1": { "$ref": "#/$defs/ZeusTaskMetadata" }
+      }
+    },
+    "TaskStatus": {
+      "type": "object",
+      "required": ["state", "timestamp"],
+      "properties": {
+        "state": { "$ref": "#/$defs/TaskState" },
+        "message": { "$ref": "#/$defs/AgentMessage" },
+        "timestamp": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }
+      }
+    },
+
+    "FileDescriptor": {
+      "description": "What Zeus tells a peer about a completed file. It travels as the metadata of the file URI part, or as the value of a data part when the URI is withheld (10 section 9). Contains no path.",
+      "type": "object",
+      "required": ["sha256", "blake3", "size_bytes", "quarantined", "completed_at", "untrusted_filename"],
+      "properties": {
+        "sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "blake3": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "size_bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "detected_mime": { "type": ["string", "null"], "maxLength": 255 },
+        "quarantined": { "type": "boolean" },
+        "quarantine_reasons": { "type": "array", "items": { "$ref": "https://zeus.invalid/schema/domain#/$defs/QuarantineReason" } },
+        "completed_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "untrusted_filename": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "uri_withheld": { "enum": ["quarantined", "remote_peer"] }
+      }
+    },
+    "FilePart": {
+      "description": "A file the peer can open by URI. Never inline bytes.",
+      "type": "object",
+      "required": ["url", "filename", "metadata"],
+      "properties": {
+        "url": { "type": "string", "maxLength": 4096, "pattern": "^file://" },
+        "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "mediaType": { "$ref": "#/$defs/MediaType" },
+        "metadata": {
+          "type": "object",
+          "required": ["https://zeus.invalid/a2a/ext/job/v1"],
+          "properties": { "https://zeus.invalid/a2a/ext/job/v1": { "$ref": "#/$defs/FileDescriptor" } }
+        }
+      }
+    },
+    "FileDescriptorPart": {
+      "description": "Descriptor-only form of a file artifact: no URI (quarantined file, or a peer that is not allowed file URIs).",
+      "type": "object",
+      "required": ["data", "mediaType"],
+      "properties": {
+        "data": { "$ref": "#/$defs/FileDescriptor" },
+        "mediaType": { "const": "application/json" }
+      }
+    },
+    "FileArtifact": {
+      "description": "The one artifact of a completed job. One part: a FilePart, or a FileDescriptorPart when the URI is withheld.",
+      "type": "object",
+      "required": ["artifactId", "parts", "extensions"],
+      "properties": {
+        "artifactId": { "const": "file" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "oneOf": [{ "$ref": "#/$defs/FilePart" }, { "$ref": "#/$defs/FileDescriptorPart" }] }
+        },
+        "extensions": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/ExtensionUri" } }
+      }
+    },
+
+    "Task": {
+      "description": "An A2A Task backed by a Zeus job. id is the job id; contextId follows 10 section 8.1.",
+      "type": "object",
+      "required": ["id", "contextId", "status"],
+      "properties": {
+        "id": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "contextId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "$ref": "#/$defs/TaskStatus" },
+        "artifacts": { "type": "array", "maxItems": 1, "items": { "$ref": "#/$defs/FileArtifact" } },
+        "metadata": { "$ref": "#/$defs/ZeusMetadata" }
+      }
+    },
+    "TaskStatusUpdateEvent": {
+      "type": "object",
+      "required": ["taskId", "contextId", "status"],
+      "properties": {
+        "taskId": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "contextId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "$ref": "#/$defs/TaskStatus" },
+        "metadata": { "$ref": "#/$defs/ZeusMetadata" }
+      }
+    },
+    "TaskArtifactUpdateEvent": {
+      "type": "object",
+      "required": ["taskId", "contextId", "artifact", "lastChunk"],
+      "properties": {
+        "taskId": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "contextId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "artifact": { "$ref": "#/$defs/FileArtifact" },
+        "append": { "const": false },
+        "lastChunk": { "const": true },
+        "metadata": { "$ref": "#/$defs/ZeusMetadata" }
+      }
+    },
+    "StreamResponse": {
+      "description": "A2A 1.0 StreamResponse, also the body of a push notification: exactly one member is present.",
+      "oneOf": [
+        { "type": "object", "required": ["task"], "properties": { "task": { "$ref": "#/$defs/Task" } } },
+        { "type": "object", "required": ["message"], "properties": { "message": { "$ref": "#/$defs/AgentMessage" } } },
+        { "type": "object", "required": ["statusUpdate"], "properties": { "statusUpdate": { "$ref": "#/$defs/TaskStatusUpdateEvent" } } },
+        { "type": "object", "required": ["artifactUpdate"], "properties": { "artifactUpdate": { "$ref": "#/$defs/TaskArtifactUpdateEvent" } } }
+      ]
+    },
+    "SendMessageResponse": {
+      "oneOf": [
+        { "type": "object", "required": ["task"], "properties": { "task": { "$ref": "#/$defs/Task" } } },
+        { "type": "object", "required": ["message"], "properties": { "message": { "$ref": "#/$defs/AgentMessage" } } }
+      ]
+    },
+
+    "TaskPushNotificationConfig": {
+      "description": "A2A 1.0 TaskPushNotificationConfig. token and credentials are secrets: never logged, held in zeroizing types (00-conventions section 8.3).",
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "tenant": { "type": "string", "maxLength": 128 },
+        "id": { "type": "string", "maxLength": 128 },
+        "taskId": { "type": "string", "maxLength": 256 },
+        "url": { "$ref": "#/$defs/HttpUrl" },
+        "token": { "type": "string", "minLength": 1, "maxLength": 256, "x-zeus-secret": true },
+        "authentication": {
+          "type": "object",
+          "required": ["scheme"],
+          "properties": {
+            "scheme": { "type": "string", "minLength": 1, "maxLength": 32 },
+            "credentials": { "type": "string", "maxLength": 2048, "x-zeus-secret": true }
+          }
+        }
+      }
+    },
+    "SendMessageConfiguration": {
+      "type": "object",
+      "properties": {
+        "acceptedOutputModes": { "type": "array", "items": { "$ref": "#/$defs/MediaType" } },
+        "taskPushNotificationConfig": { "$ref": "#/$defs/TaskPushNotificationConfig" },
+        "historyLength": { "type": "integer", "minimum": 0 },
+        "returnImmediately": { "type": "boolean" }
+      }
+    },
+    "SendMessageRequest": {
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "tenant": { "type": "string", "maxLength": 128 },
+        "message": { "$ref": "#/$defs/Message" },
+        "configuration": { "$ref": "#/$defs/SendMessageConfiguration" },
+        "metadata": { "type": "object" }
+      }
+    },
+
+    "JsonRpcId": { "type": ["string", "integer"] },
+    "JsonRpcRequest": {
+      "description": "A2A JSON-RPC binding request (A2A 1.0 section 9). Method names are PascalCase.",
+      "type": "object",
+      "required": ["jsonrpc", "id", "method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/JsonRpcId" },
+        "method": {
+          "enum": [
+            "SendMessage",
+            "SendStreamingMessage",
+            "GetTask",
+            "ListTasks",
+            "CancelTask",
+            "SubscribeToTask",
+            "CreateTaskPushNotificationConfig",
+            "GetTaskPushNotificationConfig",
+            "ListTaskPushNotificationConfigs",
+            "DeleteTaskPushNotificationConfig",
+            "GetExtendedAgentCard"
+          ]
+        },
+        "params": { "type": "object" }
+      }
+    },
+    "SendMessageRpcRequest": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/JsonRpcId" },
+        "method": { "enum": ["SendMessage", "SendStreamingMessage"] },
+        "params": { "$ref": "#/$defs/SendMessageRequest" }
+      }
+    },
+    "SendMessageRpcResponse": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/JsonRpcId" },
+        "result": { "$ref": "#/$defs/SendMessageResponse" }
+      }
+    },
+    "StreamRpcFrame": {
+      "description": "The JSON in the data field of one Server-Sent Event of the JSON-RPC binding.",
+      "type": "object",
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/JsonRpcId" },
+        "result": { "$ref": "#/$defs/StreamResponse" }
+      }
+    },
+    "ErrorInfoDetail": {
+      "description": "google.rpc.ErrorInfo in ProtoJSON Any form, as A2A 1.0 section 11.6 requires for A2A-specific errors. For a Zeus condition domain is zeus.invalid and metadata carries zeus_code, zeus_class and retryable as strings.",
+      "type": "object",
+      "required": ["@type", "reason", "domain"],
+      "properties": {
+        "@type": { "const": "type.googleapis.com/google.rpc.ErrorInfo" },
+        "reason": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 96 },
+        "domain": { "enum": ["a2a-protocol.org", "zeus.invalid"] },
+        "metadata": { "type": "object", "additionalProperties": { "type": "string", "maxLength": 512 } }
+      }
+    },
+    "BadRequestDetail": {
+      "description": "google.rpc.BadRequest. Field names only, never values (a value can be a secret).",
+      "type": "object",
+      "required": ["@type", "fieldViolations"],
+      "properties": {
+        "@type": { "const": "type.googleapis.com/google.rpc.BadRequest" },
+        "fieldViolations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field", "description"],
+            "properties": {
+              "field": { "type": "string", "maxLength": 256 },
+              "description": { "type": "string", "maxLength": 256 }
+            }
+          }
+        }
+      }
+    },
+    "JsonRpcErrorResponse": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "error"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "oneOf": [{ "$ref": "#/$defs/JsonRpcId" }, { "type": "null" }] },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "integer", "minimum": -32768, "maximum": -32000 },
+            "message": { "type": "string", "maxLength": 1024 },
+            "data": {
+              "type": "array",
+              "items": { "oneOf": [{ "$ref": "#/$defs/ErrorInfoDetail" }, { "$ref": "#/$defs/BadRequestDetail" }] }
+            }
+          }
+        }
+      }
+    },
+
+    "AgentInterface": {
+      "type": "object",
+      "required": ["url", "protocolBinding", "protocolVersion"],
+      "properties": {
+        "url": { "$ref": "#/$defs/HttpUrl" },
+        "protocolBinding": { "enum": ["JSONRPC", "HTTP+JSON"] },
+        "tenant": { "type": "string", "maxLength": 128 },
+        "protocolVersion": { "const": "1.0" }
+      }
+    },
+    "AgentProvider": {
+      "type": "object",
+      "required": ["url", "organization"],
+      "properties": {
+        "url": { "$ref": "#/$defs/HttpsUrl" },
+        "organization": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "AgentExtension": {
+      "type": "object",
+      "required": ["uri"],
+      "properties": {
+        "uri": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "required": { "type": "boolean" },
+        "params": { "type": "object" }
+      }
+    },
+    "AgentCapabilities": {
+      "type": "object",
+      "properties": {
+        "streaming": { "type": "boolean" },
+        "pushNotifications": { "type": "boolean" },
+        "extensions": { "type": "array", "items": { "$ref": "#/$defs/AgentExtension" } },
+        "extendedAgentCard": { "type": "boolean" }
+      }
+    },
+    "AgentSkill": {
+      "type": "object",
+      "required": ["id", "name", "description", "tags"],
+      "properties": {
+        "id": { "$ref": "#/$defs/SkillId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "tags": { "type": "array", "minItems": 1, "items": { "type": "string", "maxLength": 32 } },
+        "examples": { "type": "array", "items": { "type": "string", "maxLength": 512 } },
+        "inputModes": { "type": "array", "items": { "$ref": "#/$defs/MediaType" } },
+        "outputModes": { "type": "array", "items": { "$ref": "#/$defs/MediaType" } }
+      }
+    },
+    "SecurityRequirement": {
+      "type": "object",
+      "required": ["schemes"],
+      "properties": {
+        "schemes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["list"],
+            "properties": { "list": { "type": "array", "items": { "type": "string", "maxLength": 128 } } }
+          }
+        }
+      }
+    },
+    "HttpAuthSecurityScheme": {
+      "type": "object",
+      "required": ["scheme"],
+      "properties": {
+        "description": { "type": "string", "maxLength": 512 },
+        "scheme": { "const": "Bearer" },
+        "bearerFormat": { "type": "string", "maxLength": 32 }
+      }
+    },
+    "MutualTlsSecurityScheme": {
+      "type": "object",
+      "properties": { "description": { "type": "string", "maxLength": 512 } }
+    },
+    "OAuthScopes": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "maxLength": 256 }
+    },
+    "OAuth2SecurityScheme": {
+      "type": "object",
+      "required": ["flows"],
+      "properties": {
+        "description": { "type": "string", "maxLength": 512 },
+        "oauth2MetadataUrl": { "$ref": "#/$defs/HttpsUrl" },
+        "flows": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["clientCredentials"],
+              "properties": {
+                "clientCredentials": {
+                  "type": "object",
+                  "required": ["tokenUrl", "scopes"],
+                  "properties": {
+                    "tokenUrl": { "$ref": "#/$defs/HttpsUrl" },
+                    "refreshUrl": { "$ref": "#/$defs/HttpsUrl" },
+                    "scopes": { "$ref": "#/$defs/OAuthScopes" }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["authorizationCode"],
+              "properties": {
+                "authorizationCode": {
+                  "type": "object",
+                  "required": ["authorizationUrl", "tokenUrl", "scopes", "pkceRequired"],
+                  "properties": {
+                    "authorizationUrl": { "$ref": "#/$defs/HttpsUrl" },
+                    "tokenUrl": { "$ref": "#/$defs/HttpsUrl" },
+                    "refreshUrl": { "$ref": "#/$defs/HttpsUrl" },
+                    "scopes": { "$ref": "#/$defs/OAuthScopes" },
+                    "pkceRequired": { "const": true }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "OpenIdConnectSecurityScheme": {
+      "type": "object",
+      "required": ["openIdConnectUrl"],
+      "properties": {
+        "description": { "type": "string", "maxLength": 512 },
+        "openIdConnectUrl": { "$ref": "#/$defs/HttpsUrl" }
+      }
+    },
+    "SecurityScheme": {
+      "description": "A2A 1.0 SecurityScheme (a oneof: the member name is the type). Zeus never declares apiKeySecurityScheme.",
+      "oneOf": [
+        { "type": "object", "required": ["httpAuthSecurityScheme"], "properties": { "httpAuthSecurityScheme": { "$ref": "#/$defs/HttpAuthSecurityScheme" } } },
+        { "type": "object", "required": ["mtlsSecurityScheme"], "properties": { "mtlsSecurityScheme": { "$ref": "#/$defs/MutualTlsSecurityScheme" } } },
+        { "type": "object", "required": ["oauth2SecurityScheme"], "properties": { "oauth2SecurityScheme": { "$ref": "#/$defs/OAuth2SecurityScheme" } } },
+        { "type": "object", "required": ["openIdConnectSecurityScheme"], "properties": { "openIdConnectSecurityScheme": { "$ref": "#/$defs/OpenIdConnectSecurityScheme" } } }
+      ]
+    },
+    "RemoteSecurityScheme": {
+      "description": "The schemes a card may declare when any interface is not loopback: never a static bearer token (10 section 5.5).",
+      "oneOf": [
+        { "type": "object", "required": ["mtlsSecurityScheme"] },
+        { "type": "object", "required": ["oauth2SecurityScheme"] },
+        { "type": "object", "required": ["openIdConnectSecurityScheme"] }
+      ]
+    },
+    "AgentCardSignature": {
+      "type": "object",
+      "required": ["protected", "signature"],
+      "properties": {
+        "protected": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "maxLength": 2048 },
+        "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "maxLength": 2048 },
+        "header": { "type": "object" }
+      }
+    },
+    "AgentCard": {
+      "description": "A2A 1.0 AgentCard (generic).",
+      "type": "object",
+      "required": ["name", "description", "supportedInterfaces", "version", "capabilities", "defaultInputModes", "defaultOutputModes", "skills"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "supportedInterfaces": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/AgentInterface" } },
+        "provider": { "$ref": "#/$defs/AgentProvider" },
+        "version": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" },
+        "documentationUrl": { "$ref": "#/$defs/HttpsUrl" },
+        "capabilities": { "$ref": "#/$defs/AgentCapabilities" },
+        "securitySchemes": { "type": "object", "additionalProperties": { "$ref": "#/$defs/SecurityScheme" } },
+        "securityRequirements": { "type": "array", "items": { "$ref": "#/$defs/SecurityRequirement" } },
+        "defaultInputModes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/MediaType" } },
+        "defaultOutputModes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/MediaType" } },
+        "skills": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/AgentSkill" } },
+        "signatures": { "type": "array", "items": { "$ref": "#/$defs/AgentCardSignature" } },
+        "iconUrl": { "$ref": "#/$defs/HttpsUrl" }
+      }
+    },
+    "ZeusAgentCard": {
+      "description": "The card Zeus publishes at /.well-known/agent-card.json (10 section 6). Adds to the generic card: the four skills, JSONRPC first, protocol 1.0, streaming on, the Zeus extension declared, an authenticated endpoint always, and mutual TLS or OAuth (never a static bearer token) as soon as any interface is not loopback.",
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/AgentCard" },
+        {
+          "required": ["securitySchemes", "securityRequirements"],
+          "properties": {
+            "name": { "const": "Zeus" },
+            "supportedInterfaces": {
+              "prefixItems": [
+                { "type": "object", "required": ["protocolBinding"], "properties": { "protocolBinding": { "const": "JSONRPC" } }, "additionalProperties": true }
+              ]
+            },
+            "capabilities": {
+              "type": "object",
+              "required": ["streaming", "pushNotifications", "extensions"],
+              "properties": {
+                "streaming": { "const": true },
+                "extensions": {
+                  "type": "array",
+                  "contains": {
+                    "type": "object",
+                    "required": ["uri", "required"],
+                    "properties": { "uri": { "$ref": "#/$defs/ExtensionUri" }, "required": { "const": false } },
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "additionalProperties": true
+            },
+            "securitySchemes": { "type": "object", "minProperties": 1 },
+            "securityRequirements": { "type": "array", "minItems": 1 },
+            "skills": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "allOf": [
+                { "contains": { "type": "object", "required": ["id"], "properties": { "id": { "const": "fetch_file" } }, "additionalProperties": true } },
+                { "contains": { "type": "object", "required": ["id"], "properties": { "id": { "const": "rescue_download" } }, "additionalProperties": true } },
+                { "contains": { "type": "object", "required": ["id"], "properties": { "id": { "const": "organize_files" } }, "additionalProperties": true } },
+                { "contains": { "type": "object", "required": ["id"], "properties": { "id": { "const": "convert_files" } }, "additionalProperties": true } }
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "if": {
+            "required": ["supportedInterfaces"],
+            "properties": {
+              "supportedInterfaces": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": ["url"],
+                  "properties": { "url": { "not": { "pattern": "^https?://(127\\.0\\.0\\.1|\\[::1\\]|localhost)(:[0-9]+)?(/|$)" } } },
+                  "additionalProperties": true
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "then": {
+            "required": ["securitySchemes"],
+            "properties": {
+              "securitySchemes": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": { "$ref": "#/$defs/RemoteSecurityScheme" }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      ]
+    },
+
+    "BareUrlText": {
+      "description": "A text part that is exactly one http or https URL, accepted as shorthand for a fetch_file request. Any other free text is not interpreted (10 section 7.1).",
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 8192,
+      "pattern": "^https?://[^\\s]+$"
+    },
+    "FetchFileInput": {
+      "description": "Public download. Closed vocabulary: unknown members are rejected with a.2a.input_invalid because a caller that sent cookies or headers must not believe they were honoured.",
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "properties": {
+        "url": { "$ref": "https://zeus.invalid/schema/common#/$defs/Url" },
+        "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "expected_sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "expected_size_bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "priority": { "enum": ["low", "normal"] },
+        "dry_run": { "type": "boolean" }
+      }
+    },
+    "RescueDownloadInput": {
+      "description": "Download that needs the user's browser session. Names the origin; a person decides (an approval of kind session_grant). Carries no credential of any kind.",
+      "type": "object",
+      "required": ["url", "session_origin"],
+      "additionalProperties": false,
+      "properties": {
+        "url": { "$ref": "https://zeus.invalid/schema/common#/$defs/Url" },
+        "session_origin": { "$ref": "https://zeus.invalid/schema/common#/$defs/Origin" },
+        "grant_scope_hint": { "enum": ["once", "site"] },
+        "reason": { "type": "string", "maxLength": 280 },
+        "hint_url": { "$ref": "https://zeus.invalid/schema/common#/$defs/Url" },
+        "referrer": { "$ref": "https://zeus.invalid/schema/common#/$defs/Url" },
+        "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "expected_sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "expected_size_bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "priority": { "enum": ["low", "normal"] }
+      }
+    },
+    "RelativePath": {
+      "description": "Path relative to the peer's own download folder, / separators, no drive letter, no .. segment, no control characters (04 RelPath rules).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(^|/)\\.\\.(/|$))[^\\u0000-\\u001f\\\\]+$"
+    },
+    "OrganizeFilesInput": {
+      "description": "Plan renames and moves inside the peer's own download folder. Plan only: a peer cannot make Zeus change files (10 section 7.2).",
+      "type": "object",
+      "required": ["dir", "rules"],
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "$ref": "#/$defs/RelativePath" },
+        "rules": { "type": "object" },
+        "dry_run": { "const": true }
+      }
+    },
+    "ConvertFilesInput": {
+      "description": "Plan conversions of files inside the peer's own download folder. Plan only.",
+      "type": "object",
+      "required": ["inputs", "target"],
+      "additionalProperties": false,
+      "properties": {
+        "inputs": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/$defs/RelativePath" } },
+        "target": { "type": "string", "pattern": "^[a-z0-9]{1,16}$" },
+        "dry_run": { "const": true }
+      }
+    },
+    "SkillRequest": {
+      "description": "The value of the data part that selects a skill (10 section 7.1).",
+      "oneOf": [
+        { "type": "object", "required": ["skill", "input"], "additionalProperties": false, "properties": { "skill": { "const": "fetch_file" }, "input": { "$ref": "#/$defs/FetchFileInput" } } },
+        { "type": "object", "required": ["skill", "input"], "additionalProperties": false, "properties": { "skill": { "const": "rescue_download" }, "input": { "$ref": "#/$defs/RescueDownloadInput" } } },
+        { "type": "object", "required": ["skill", "input"], "additionalProperties": false, "properties": { "skill": { "const": "organize_files" }, "input": { "$ref": "#/$defs/OrganizeFilesInput" } } },
+        { "type": "object", "required": ["skill", "input"], "additionalProperties": false, "properties": { "skill": { "const": "convert_files" }, "input": { "$ref": "#/$defs/ConvertFilesInput" } } }
+      ]
+    },
+    "SkillRequestMessage": {
+      "description": "A peer message that selects a skill: one data part holding a SkillRequest.",
+      "type": "object",
+      "required": ["messageId", "role", "parts"],
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "contextId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "role": { "const": "ROLE_USER" },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["data", "mediaType"],
+            "properties": { "data": { "$ref": "#/$defs/SkillRequest" }, "mediaType": { "const": "application/json" } }
+          }
+        },
+        "extensions": { "type": "array", "items": { "type": "string", "maxLength": 512 } }
+      }
+    },
+    "PlanStep": {
+      "description": "One step of a plan returned by organize_files or convert_files. Names are remote-derived and therefore untrusted.",
+      "type": "object",
+      "required": ["op", "untrusted_from", "destructive"],
+      "properties": {
+        "op": { "enum": ["move", "rename", "convert", "trash"] },
+        "untrusted_from": { "type": "string", "maxLength": 1024 },
+        "untrusted_to": { "type": "string", "maxLength": 1024 },
+        "destructive": { "type": "boolean" }
+      }
+    },
+    "PlanResult": {
+      "description": "Data part of the Message that answers organize_files and convert_files. applied is always false through A2A.",
+      "type": "object",
+      "required": ["skill", "steps", "applied"],
+      "properties": {
+        "skill": { "enum": ["organize_files", "convert_files"] },
+        "steps": { "type": "array", "maxItems": 1000, "items": { "$ref": "#/$defs/PlanStep" } },
+        "applied": { "const": false }
+      }
+    },
+
+    "TaskMappingRecord": {
+      "description": "The durable link between an A2A task and the job behind it. The task id is the job id. The bridge keeps no other state: the record is stored in the job's labels (TaskMappingLabels) and decoded from them (10 section 8.6).",
+      "type": "object",
+      "required": ["task_id", "context_id", "peer", "skill", "message_hash"],
+      "properties": {
+        "task_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" },
+        "context_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "peer": { "$ref": "#/$defs/PeerName" },
+        "skill": { "enum": ["fetch_file", "rescue_download"] },
+        "message_hash": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+      }
+    },
+    "TaskMappingLabels": {
+      "description": "The only labels the A2A bridge writes on a job. The first job of a context carries no a2a.context label: its context id is its own job id. Labels are caller-controlled data: ownership also requires the daemon-derived source (10 section 8.7).",
+      "type": "object",
+      "required": ["a2a.v", "a2a.peer", "a2a.skill", "a2a.msg"],
+      "properties": {
+        "a2a.v": { "const": "1" },
+        "a2a.peer": { "$ref": "#/$defs/PeerName" },
+        "a2a.skill": { "enum": ["fetch_file", "rescue_download"] },
+        "a2a.context": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "a2a.msg": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+      }
+    },
+    "StateMappingVector": {
+      "description": "One row of the conformance vectors for the JobState to TaskState function (10 section 8.2).",
+      "type": "object",
+      "required": ["job_state", "attempt", "error_class", "task_state", "interrupted", "terminal"],
+      "properties": {
+        "job_state": { "$ref": "https://zeus.invalid/schema/domain#/$defs/JobState" },
+        "attempt": { "type": "integer", "minimum": 0 },
+        "error_class": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorClass" }, { "type": "null" }] },
+        "task_state": { "$ref": "#/$defs/TaskState" },
+        "interrupted": { "type": "boolean" },
+        "terminal": { "type": "boolean" }
+      }
+    },
+
+    "PeerIdentity": {
+      "description": "How a peer proves who it is. A token identity names the peer whose token verifier the bridge holds; the token itself is never in configuration.",
+      "oneOf": [
+        { "type": "object", "required": ["type"], "properties": { "type": { "const": "token" } } },
+        {
+          "type": "object",
+          "required": ["type", "spki_sha256"],
+          "properties": { "type": { "const": "mtls" }, "spki_sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" } }
+        },
+        {
+          "type": "object",
+          "required": ["type", "issuer", "subject"],
+          "properties": {
+            "type": { "const": "oauth" },
+            "issuer": { "$ref": "#/$defs/HttpsUrl" },
+            "subject": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        }
+      ]
+    },
+    "PeerRecord": {
+      "description": "One entry of a2a.peers in configuration, keyed by PeerName. Written only by a human on a trust surface (config.set is human-only).",
+      "type": "object",
+      "required": ["trust", "identities", "added_at"],
+      "properties": {
+        "trust": { "$ref": "#/$defs/TrustLevel" },
+        "label": { "type": "string", "maxLength": 200 },
+        "identities": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "$ref": "#/$defs/PeerIdentity" } },
+        "skills": { "type": "array", "items": { "$ref": "#/$defs/SkillId" }, "uniqueItems": true },
+        "file_uris": { "type": "boolean" },
+        "push_hosts": { "type": "array", "maxItems": 8, "items": { "type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$" } },
+        "delegate_url": { "$ref": "#/$defs/HttpUrl" },
+        "card_blake3": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "added_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "expires_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] }
+      },
+      "if": {
+        "required": ["trust"],
+        "properties": { "trust": { "const": "delegate" } },
+        "additionalProperties": true
+      },
+      "then": { "required": ["delegate_url"] }
+    },
+    "A2aConfig": {
+      "description": "Resolved form of the [a2a] configuration section (what config.get returns). Everything is off by default; the conditional rules are the exposure invariants of 10 section 5.",
+      "type": "object",
+      "required": ["enabled", "listen", "auth", "push", "delegation"],
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "listen": {
+          "type": "object",
+          "required": ["address", "port", "remote"],
+          "properties": {
+            "address": { "type": "string", "minLength": 2, "maxLength": 64 },
+            "port": { "type": "integer", "minimum": 1024, "maximum": 65535, "default": 4750 },
+            "remote": { "type": "boolean", "default": false }
+          }
+        },
+        "tls": {
+          "type": "object",
+          "required": ["cert_file", "key_file"],
+          "properties": {
+            "cert_file": { "type": "string", "maxLength": 4096 },
+            "key_file": { "type": "string", "maxLength": 4096 },
+            "client_ca_file": { "type": "string", "maxLength": 4096 }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": { "enum": ["token", "mtls", "oauth", "mtls_oauth"], "default": "token" },
+            "token_ttl_days": { "type": "integer", "minimum": 1, "maximum": 365, "default": 90 },
+            "oauth": {
+              "type": "object",
+              "required": ["issuer", "audience"],
+              "properties": {
+                "issuer": { "$ref": "#/$defs/HttpsUrl" },
+                "audience": { "type": "string", "minLength": 1, "maxLength": 256 },
+                "jwks_url": { "$ref": "#/$defs/HttpsUrl" },
+                "scope_read": { "type": "string", "maxLength": 128, "default": "zeus.tasks.read" },
+                "scope_write": { "type": "string", "maxLength": 128, "default": "zeus.tasks.write" }
+              }
+            }
+          }
+        },
+        "limits": {
+          "description": "Lowers the defaults of 10 section 5.7. Never raises a hard maximum (00-conventions section 10).",
+          "type": "object",
+          "properties": {
+            "active_tasks_per_peer": { "type": "integer", "minimum": 1, "maximum": 16 },
+            "sends_per_minute": { "type": "integer", "minimum": 1, "maximum": 30 },
+            "streams_per_peer": { "type": "integer", "minimum": 1, "maximum": 4 },
+            "pending_approvals_per_peer": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "blocking_wait_ms": { "type": "integer", "minimum": 1000, "maximum": 30000 }
+          }
+        },
+        "push": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": { "enabled": { "type": "boolean", "default": false } }
+        },
+        "delegation": {
+          "type": "object",
+          "required": ["enabled", "allow_unknown_peers"],
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "allow_unknown_peers": { "type": "boolean", "default": false },
+            "max_concurrent": { "type": "integer", "minimum": 1, "maximum": 4 },
+            "per_hour": { "type": "integer", "minimum": 1, "maximum": 20 },
+            "task_timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 3600000 }
+          }
+        },
+        "peers": { "type": "object", "propertyNames": { "$ref": "#/$defs/PeerName" }, "additionalProperties": { "$ref": "#/$defs/PeerRecord" } }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["listen"],
+            "properties": { "listen": { "type": "object", "required": ["remote"], "properties": { "remote": { "const": true } }, "additionalProperties": true } },
+            "additionalProperties": true
+          },
+          "then": {
+            "required": ["tls", "auth"],
+            "properties": {
+              "auth": { "type": "object", "required": ["mode"], "properties": { "mode": { "enum": ["mtls", "oauth", "mtls_oauth"] } }, "additionalProperties": true }
+            },
+            "additionalProperties": true
+          },
+          "else": {
+            "properties": {
+              "listen": { "type": "object", "properties": { "address": { "enum": ["127.0.0.1", "::1"] } }, "additionalProperties": true }
+            },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "required": ["auth"],
+            "properties": { "auth": { "type": "object", "required": ["mode"], "properties": { "mode": { "enum": ["mtls", "mtls_oauth"] } }, "additionalProperties": true } },
+            "additionalProperties": true
+          },
+          "then": {
+            "required": ["tls"],
+            "properties": { "tls": { "type": "object", "required": ["client_ca_file"], "additionalProperties": true } },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "required": ["auth"],
+            "properties": { "auth": { "type": "object", "required": ["mode"], "properties": { "mode": { "enum": ["oauth", "mtls_oauth"] } }, "additionalProperties": true } },
+            "additionalProperties": true
+          },
+          "then": {
+            "properties": { "auth": { "type": "object", "required": ["oauth"], "additionalProperties": true } },
+            "additionalProperties": true
+          }
+        },
+        {
+          "if": {
+            "required": ["delegation"],
+            "properties": { "delegation": { "type": "object", "required": ["allow_unknown_peers"], "properties": { "allow_unknown_peers": { "const": true } }, "additionalProperties": true } },
+            "additionalProperties": true
+          },
+          "then": {
+            "properties": { "delegation": { "type": "object", "required": ["enabled"], "properties": { "enabled": { "const": true } }, "additionalProperties": true } },
+            "additionalProperties": true
+          }
+        }
+      ]
+    }
+  }
+}

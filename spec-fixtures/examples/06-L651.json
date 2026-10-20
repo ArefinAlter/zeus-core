@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "range_support": "unknown",
+  "requires_session": true,
+  "interstitial_suspected": true,
+  "approval_needed": true,
+  "redirects": 1,
+  "next": { "action": "request_session", "tool": "zeus_session_request" },
+  "untrusted_content_type": "text/html; charset=utf-8",
+  "untrusted_final_url": "https://portal.example.org/login?…"
+}

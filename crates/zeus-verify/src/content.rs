@@ -3,12 +3,8 @@
 //! A file's *claimed* type (`Content-Type`, extension) is compared with its *detected* type (magic
 //! bytes) through a pluggable [`ContentDetector`]; `infer` is the default and a learned detector can
 //! be dropped in later. The verdict feeds the quarantine decision and `job.verified.mime_match`.
-#![expect(
-    unused_variables,
-    reason = "skeleton: check_content is filled in by the zeus-verify implementation task"
-)]
 
-use crate::error::{VerifyError, VerifyResult};
+use crate::error::VerifyResult;
 
 /// A type recognised from the leading bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,7 +64,63 @@ pub fn check_content(
     head: &[u8],
     claim: &ContentClaim<'_>,
 ) -> VerifyResult<(ContentVerdict, Option<DetectedType>)> {
-    Err(VerifyError::NotImplemented("check_content"))
+    let mut detected = detector.detect(head);
+    let text = String::from_utf8_lossy(head)
+        .trim_start_matches(['\u{feff}', ' ', '\t', '\n', '\r'])
+        .to_ascii_lowercase();
+    if detected.is_none()
+        && (text.starts_with("<!doctype html")
+            || text.starts_with("<html")
+            || text.starts_with("<script"))
+    {
+        detected = Some(DetectedType {
+            mime: "text/html".into(),
+            extension: "html".into(),
+        });
+    }
+    let executable = crate::quarantine::has_executable_extension(claim.file_name)
+        || head.starts_with(b"#!")
+        || detected.as_ref().is_some_and(|d| {
+            matches!(
+                d.mime.as_str(),
+                "application/x-executable"
+                    | "application/x-dosexec"
+                    | "application/vnd.microsoft.portable-executable"
+                    | "application/x-mach-binary"
+                    | "application/x-sharedlib"
+            )
+        });
+    if executable {
+        return Ok((ContentVerdict::DangerousType, detected));
+    }
+    let Some(ref kind) = detected else {
+        return Ok((ContentVerdict::Unknown, None));
+    };
+    let extension = claim
+        .file_name
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase());
+    let claim_mime = claim
+        .declared_mime
+        .map(|m| m.split(';').next().unwrap_or(m).trim().to_ascii_lowercase());
+    let mismatch = claim_mime
+        .as_deref()
+        .is_some_and(|m| m != "application/octet-stream" && m != kind.mime)
+        || extension
+            .as_deref()
+            .is_some_and(|e| match (e, kind.extension.as_str()) {
+                ("jpg", "jpeg") | ("jpeg", "jpg") | ("htm", "html") => false,
+                ("docx" | "xlsx" | "pptx" | "epub", "zip") => false,
+                _ => e != kind.extension,
+            });
+    let verdict = if mismatch && kind.mime == "text/html" {
+        ContentVerdict::DangerousType
+    } else if mismatch {
+        ContentVerdict::Mismatch
+    } else {
+        ContentVerdict::Ok
+    };
+    Ok((verdict, detected))
 }
 
 #[cfg(test)]

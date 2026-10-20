@@ -4,12 +4,6 @@
 //! adds connections (+1); on a throttle signal (429, 503, connection reset, HTTP/2
 //! `ENHANCE_YOUR_CALM`) or a throughput drop it halves them. The result is bounded by the job's
 //! `max_connections` and the per-host budget, and is never below one.
-#![expect(
-    unused_variables,
-    dead_code,
-    reason = "skeleton: bodies are filled in by the zeus-control implementation task"
-)]
-
 use std::time::Duration;
 
 use crate::error::{ControlError, Result};
@@ -91,6 +85,7 @@ pub enum Reason {
 pub struct AimdController {
     config: AimdConfig,
     current: u32,
+    previous_throughput: Option<u64>,
 }
 
 impl AimdController {
@@ -113,7 +108,22 @@ impl AimdController {
             ));
         }
         let current = config.initial;
-        Ok(Self { config, current })
+        if !config.min_marginal_gain.is_finite()
+            || config.min_marginal_gain < 0.0
+            || !config.throughput_drop_ratio.is_finite()
+            || !(0.0..=1.0).contains(&config.throughput_drop_ratio)
+            || config.interval.is_zero()
+        {
+            return Err(ControlError::invalid(
+                "config",
+                "invalid threshold or interval",
+            ));
+        }
+        Ok(Self {
+            config,
+            current,
+            previous_throughput: None,
+        })
     }
 
     /// The current target.
@@ -124,7 +134,40 @@ impl AimdController {
 
     /// Feeds one interval's observation and returns the new target.
     pub fn observe(&mut self, signal: Signal) -> Result<Decision> {
-        Err(ControlError::NotImplemented("AimdController::observe"))
+        let mut reason = Reason::Hold;
+        match signal {
+            Signal::Throttled => {
+                self.current = ((f64::from(self.current) * self.config.multiplicative_decrease)
+                    .floor() as u32)
+                    .max(self.config.min);
+                reason = Reason::Throttled;
+            }
+            Signal::Interval { throughput_bps, .. } => {
+                if let Some(previous) = self.previous_throughput.filter(|p| *p > 0) {
+                    let change = throughput_bps as f64 / previous as f64 - 1.0;
+                    if change < -self.config.throughput_drop_ratio {
+                        self.current = ((f64::from(self.current)
+                            * self.config.multiplicative_decrease)
+                            .floor() as u32)
+                            .max(self.config.min);
+                        reason = Reason::ThroughputDrop;
+                    } else if change >= self.config.min_marginal_gain
+                        && self.current < self.config.max
+                    {
+                        self.current = self
+                            .current
+                            .saturating_add(self.config.additive_increase)
+                            .min(self.config.max);
+                        reason = Reason::Increase;
+                    }
+                }
+                self.previous_throughput = Some(throughput_bps);
+            }
+        }
+        Ok(Decision {
+            target: self.current,
+            reason,
+        })
     }
 }
 

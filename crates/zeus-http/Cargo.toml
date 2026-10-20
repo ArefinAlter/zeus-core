@@ -27,6 +27,7 @@ async-trait.workspace = true
 http.workspace = true
 url.workspace = true
 httpdate.workspace = true
+percent-encoding.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
 tokio-util = { workspace = true, features = ["rt"] }
 reqwest = { workspace = true, optional = true }

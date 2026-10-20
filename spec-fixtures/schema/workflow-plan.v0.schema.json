@@ -1,0 +1,866 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeus.invalid/schema/workflow-plan.v0",
+  "title": "Zeus workflow plan IR v0 and its reports",
+  "description": "Normative text: docs/spec/08-workflow-plan-v0.md. The Plan and every definition it reaches are STRICT (additionalProperties false): a plan is hashed and approved, so a property the daemon does not understand is rejected, never ignored (08 section 4.2). Report and record definitions (PageSample, Diagnostic, DryRunReport, RunReport, Checkpoint, ItemRecord) follow 00 section 4 rule 7 and do not forbid unknown properties. Definitions whose description starts with 'Portable' form the acquisition vocabulary that Ogun reuses (ADR 0011, 08 section 12); they reference only other portable definitions and common.schema.json. Plans contain no floating-point numbers (00 section 7).",
+  "$defs": {
+    "PlanVersion": {
+      "description": "Daemon-only. The plan format version. This schema describes version 0.",
+      "const": 0
+    },
+    "PlanId": {
+      "description": "Daemon-only. Identifier of a stored plan draft (00 section 5.1 prefix plan_).",
+      "type": "string",
+      "pattern": "^plan_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    },
+    "PlanHash": {
+      "description": "Daemon-only. Lowercase hex BLAKE3 of the RFC 8785 (JCS) form of the normalized plan (08 section 4.2).",
+      "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+    },
+    "Template": {
+      "description": "Portable. A template of the closed expression language of 08 section 5.1: literals and {field|filter|filter:arg} placeholders. Grammar, filters and limits are enforced by the validator, not by this schema.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "FieldName": {
+      "description": "Portable. Name of an extracted field.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$"
+    },
+    "ParamName": {
+      "description": "Portable. Name of a URL query parameter written by a pagination strategy.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.\\[\\]-]{1,64}$"
+    },
+    "Ymd": {
+      "description": "Portable. A calendar date YYYY-MM-DD (proleptic Gregorian, no time zone).",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "Extension": {
+      "description": "Portable. A file extension: lowercase ASCII letters and digits, no dot.",
+      "type": "string",
+      "pattern": "^[a-z0-9]{1,8}$"
+    },
+    "MediaTypePattern": {
+      "description": "Portable. A media type type/subtype, or type/* (lowercase, no parameters).",
+      "type": "string",
+      "maxLength": 127,
+      "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]{0,62}/(\\*|[a-z0-9][a-z0-9!#$&^_.+-]{0,62})$"
+    },
+    "RegexPattern": {
+      "description": "Portable. A regular expression in the syntax of 08 section 5.4 (linear-time engine: no look-around, no back-references).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "DomainPattern": {
+      "description": "Portable. An allowed host: an exact lowercase ASCII (punycode) host name, or *. followed by a host name to allow every proper subdomain of it (not the name itself). IP literals and single-label names are not allowed.",
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+([a-z]([a-z0-9-]{0,61}[a-z0-9])?)$"
+    },
+    "Selector": {
+      "description": "Portable. Locates nodes in a document or values in an item (08 sections 5.2 to 5.4).",
+      "oneOf": [
+        { "$ref": "#/$defs/CssSelector" },
+        { "$ref": "#/$defs/JsonPathSelector" },
+        { "$ref": "#/$defs/RegexSelector" },
+        { "$ref": "#/$defs/XpathSelector" }
+      ]
+    },
+    "CssSelector": {
+      "description": "Portable. CSS selector over an HTML document, restricted to the subset of 08 section 5.2.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "query"],
+      "properties": {
+        "kind": { "const": "css" },
+        "query": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "JsonPathSelector": {
+      "description": "Portable. RFC 9535 JSONPath query over a JSON document or item (08 section 5.3).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "query"],
+      "properties": {
+        "kind": { "const": "json_path" },
+        "query": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^\\$" }
+      }
+    },
+    "RegexSelector": {
+      "description": "Portable. Regular expression over text; the result is capture group 'group' (0 is the whole match).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "pattern"],
+      "properties": {
+        "kind": { "const": "regex" },
+        "pattern": { "$ref": "#/$defs/RegexPattern" },
+        "group": { "type": "integer", "minimum": 0, "maximum": 32, "default": 1 }
+      }
+    },
+    "XpathSelector": {
+      "description": "Portable. Reserved. XPath is part of the vocabulary but every v0 validator rejects it with plan.selector_unsupported.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "query"],
+      "properties": {
+        "kind": { "const": "xpath" },
+        "query": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "Extraction": {
+      "description": "Portable. What to take from a matched node.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "text" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "name"],
+          "properties": {
+            "kind": { "const": "attr" },
+            "name": { "type": "string", "pattern": "^[a-z_:][a-z0-9_:.-]{0,63}$" }
+          }
+        }
+      ]
+    },
+    "Field": {
+      "description": "Portable. One named value extracted from each item (08 section 4.7).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "selector": {
+          "$ref": "#/$defs/Selector",
+          "description": "Relative to the item node. Absent: the item node itself."
+        },
+        "from_field": {
+          "$ref": "#/$defs/FieldName",
+          "description": "Apply a regex selector to the value of another field instead of to the item node. Only with a regex selector; the source field must not itself use from_field."
+        },
+        "extract": { "$ref": "#/$defs/Extraction", "default": { "kind": "text" } },
+        "resolve_url": {
+          "type": "boolean",
+          "default": false,
+          "description": "Resolve the value against the document base URL into an absolute http(s) URL. Always true in the normal form of the field named url."
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Items without a value for this field are dropped. Always true in the normal form of the field named url."
+        }
+      }
+    },
+    "FieldMap": {
+      "description": "Portable. Named fields. Key order carries no meaning (the plan hash uses JCS).",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": { "$ref": "#/$defs/FieldName" },
+      "additionalProperties": { "$ref": "#/$defs/Field" }
+    },
+    "Follow": {
+      "description": "Portable. Fetch one detail page per item and extract more fields from it (one level only in v0).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url_field", "fields"],
+      "properties": {
+        "url_field": { "$ref": "#/$defs/FieldName" },
+        "fields": { "$ref": "#/$defs/FieldMap" }
+      }
+    },
+    "Extract": {
+      "description": "Portable. Item extraction: an item selector, named fields, and an optional detail-page step.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "fields"],
+      "properties": {
+        "items": { "$ref": "#/$defs/Selector" },
+        "fields": { "$ref": "#/$defs/FieldMap" },
+        "follow": { "$ref": "#/$defs/Follow" }
+      }
+    },
+    "Source": {
+      "description": "Portable. An entry point of the discovery (08 section 4.5).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "urls"],
+          "properties": {
+            "type": { "const": "start_urls" },
+            "urls": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": { "$ref": "https://zeus.invalid/schema/common#/$defs/Url" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "url"],
+          "properties": {
+            "type": { "const": "sitemap" },
+            "url": { "$ref": "https://zeus.invalid/schema/common#/$defs/Url" },
+            "loc_pattern": { "$ref": "#/$defs/RegexPattern" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "url"],
+          "properties": {
+            "type": { "const": "api_endpoint" },
+            "url": { "$ref": "https://zeus.invalid/schema/common#/$defs/Url" },
+            "accept": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$",
+              "description": "Media type sent in Accept for the API pages; default application/json."
+            }
+          }
+        }
+      ]
+    },
+    "RelNextPagination": {
+      "description": "Portable. Follow Link rel=next (RFC 8288), then <link rel=next> or <a rel=next> in HTML.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "max_pages"],
+      "properties": {
+        "strategy": { "const": "rel_next" },
+        "max_pages": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      }
+    },
+    "PageParamPagination": {
+      "description": "Portable. Numeric page parameter start, start+step, ... up to end (inclusive) or max_pages.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "param", "start", "max_pages"],
+      "properties": {
+        "strategy": { "const": "page_param" },
+        "param": { "$ref": "#/$defs/ParamName" },
+        "start": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+        "step": { "type": "integer", "minimum": 1, "maximum": 1000000, "default": 1 },
+        "end": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+        "max_pages": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      }
+    },
+    "OffsetLimitPagination": {
+      "description": "Portable. Offset and limit parameters: offset = start_offset + k * limit.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "offset_param", "limit_param", "limit", "max_pages"],
+      "properties": {
+        "strategy": { "const": "offset_limit" },
+        "offset_param": { "$ref": "#/$defs/ParamName" },
+        "limit_param": { "$ref": "#/$defs/ParamName" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "start_offset": { "type": "integer", "minimum": 0, "maximum": 2147483647, "default": 0 },
+        "max_pages": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      }
+    },
+    "CursorPagination": {
+      "description": "Portable. A cursor read with a JSONPath from each JSON page and sent back in a query parameter.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "cursor_path", "param", "max_pages"],
+      "properties": {
+        "strategy": { "const": "cursor" },
+        "cursor_path": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^\\$" },
+        "param": { "$ref": "#/$defs/ParamName" },
+        "max_pages": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      }
+    },
+    "NextSelectorPagination": {
+      "description": "Portable. A selector for the next-page link.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "selector", "max_pages"],
+      "properties": {
+        "strategy": { "const": "next_selector" },
+        "selector": { "$ref": "#/$defs/Selector" },
+        "max_pages": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      }
+    },
+    "InfiniteScrollPagination": {
+      "description": "Daemon-only variant of the portable Pagination: scrolling driven in the user's browser through the extension. Needs a browser capability that native messaging v1 does not define yet (08 section 16).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "max_scrolls", "settle_ms"],
+      "properties": {
+        "strategy": { "const": "infinite_scroll" },
+        "max_scrolls": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "settle_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
+      }
+    },
+    "InnerPagination": {
+      "description": "Portable. Pagination inside one date window of a date_range strategy.",
+      "oneOf": [
+        { "$ref": "#/$defs/RelNextPagination" },
+        { "$ref": "#/$defs/PageParamPagination" },
+        { "$ref": "#/$defs/OffsetLimitPagination" },
+        { "$ref": "#/$defs/CursorPagination" },
+        { "$ref": "#/$defs/NextSelectorPagination" }
+      ]
+    },
+    "DateRangePagination": {
+      "description": "Portable. Chunk [from, to] into windows of chunk_days days; each window is one chain, optionally paginated inside.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "from_param", "to_param", "from", "to", "chunk_days"],
+      "properties": {
+        "strategy": { "const": "date_range" },
+        "from_param": { "$ref": "#/$defs/ParamName" },
+        "to_param": { "$ref": "#/$defs/ParamName" },
+        "from": { "$ref": "#/$defs/Ymd" },
+        "to": { "$ref": "#/$defs/Ymd" },
+        "chunk_days": { "type": "integer", "minimum": 1, "maximum": 366 },
+        "date_format": { "enum": ["iso_date", "basic_date"], "default": "iso_date" },
+        "order": { "enum": ["ascending", "descending"], "default": "ascending" },
+        "inner": { "$ref": "#/$defs/InnerPagination" }
+      }
+    },
+    "Pagination": {
+      "description": "Portable (except infinite_scroll, which is daemon-only). How a chain reaches its next page (08 section 4.6).",
+      "oneOf": [
+        { "$ref": "#/$defs/RelNextPagination" },
+        { "$ref": "#/$defs/PageParamPagination" },
+        { "$ref": "#/$defs/OffsetLimitPagination" },
+        { "$ref": "#/$defs/CursorPagination" },
+        { "$ref": "#/$defs/NextSelectorPagination" },
+        { "$ref": "#/$defs/InfiniteScrollPagination" },
+        { "$ref": "#/$defs/DateRangePagination" }
+      ]
+    },
+    "Filter": {
+      "description": "Portable. An item filter (08 section 4.8). Filters run in plan order.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "pattern"],
+          "properties": {
+            "type": { "const": "url_regex" },
+            "pattern": { "$ref": "#/$defs/RegexPattern" },
+            "invert": { "type": "boolean", "default": false }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "field", "pattern"],
+          "properties": {
+            "type": { "const": "field_regex" },
+            "field": { "$ref": "#/$defs/FieldName" },
+            "pattern": { "$ref": "#/$defs/RegexPattern" },
+            "invert": { "type": "boolean", "default": false }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "allow"],
+          "properties": {
+            "type": { "const": "mime" },
+            "allow": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/MediaTypePattern" }
+            },
+            "unknown": { "enum": ["keep", "drop"], "default": "keep" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "bytes"],
+          "properties": {
+            "type": { "const": "max_size" },
+            "bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "bytes"],
+          "properties": {
+            "type": { "const": "min_size" },
+            "bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "key"],
+          "properties": {
+            "type": { "const": "dedupe" },
+            "key": { "$ref": "#/$defs/Template" }
+          }
+        }
+      ]
+    },
+    "FetchPolicy": {
+      "description": "Portable. Rate and politeness for every request the run makes (08 section 4.9).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_interval_ms", "max_concurrency_per_host"],
+      "properties": {
+        "min_interval_ms": { "type": "integer", "minimum": 200, "maximum": 3600000 },
+        "max_concurrency_per_host": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "max_connections_per_file": { "type": "integer", "minimum": 1, "maximum": 8, "default": 1 },
+        "respect_robots": { "type": "boolean", "default": true },
+        "priority": { "enum": ["low", "normal", "high"], "default": "low" },
+        "download_accept": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-z0-9*][a-z0-9!#$&^_.+*-]*/[a-z0-9*][a-z0-9!#$&^_.+*-]*$",
+          "description": "Accept header for file downloads (01 extra_headers allow-list)."
+        }
+      }
+    },
+    "Budgets": {
+      "description": "Portable. Mandatory hard limits (08 section 4.10).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_pages", "max_files", "max_bytes", "max_duration_ms", "max_depth"],
+      "properties": {
+        "max_pages": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "max_files": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "max_bytes": { "type": "integer", "minimum": 1, "maximum": 1125899906842624 },
+        "max_duration_ms": { "type": "integer", "minimum": 1, "maximum": 604800000 },
+        "max_depth": { "type": "integer", "minimum": 1, "maximum": 8 }
+      }
+    },
+    "StopRules": {
+      "description": "Portable. When a chain stops early, and what drift does (08 sections 4.13 and 8.7).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "no_new_items_pages": { "type": "integer", "minimum": 0, "maximum": 100, "default": 3 },
+        "stop_on_duplicate_page": { "type": "boolean", "default": true },
+        "count_hint": { "$ref": "#/$defs/Selector" },
+        "on_drift": { "enum": ["pause", "stop", "continue"], "default": "pause" }
+      }
+    },
+    "SessionRequirement": {
+      "description": "Daemon-only. The one origin whose browser session the run may use, under a workflow grant created by the plan approval.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin"],
+      "properties": {
+        "origin": { "$ref": "https://zeus.invalid/schema/common#/$defs/Origin" },
+        "scope": { "const": "workflow", "default": "workflow" }
+      }
+    },
+    "RuleMatch": {
+      "description": "Daemon-only. Conditions of a routing rule; all present conditions must hold.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "ext": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/Extension" }
+        },
+        "media_type": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/MediaTypePattern" }
+        },
+        "url_regex": { "$ref": "#/$defs/RegexPattern" },
+        "field_regex": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "pattern"],
+          "properties": {
+            "field": { "$ref": "#/$defs/FieldName" },
+            "pattern": { "$ref": "#/$defs/RegexPattern" }
+          }
+        }
+      }
+    },
+    "RoutingRule": {
+      "description": "Daemon-only. First matching rule overrides the default rename and subdir templates.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["when"],
+      "anyOf": [{ "required": ["rename"] }, { "required": ["subdir"] }],
+      "properties": {
+        "when": { "$ref": "#/$defs/RuleMatch" },
+        "rename": { "$ref": "#/$defs/Template" },
+        "subdir": { "$ref": "#/$defs/Template" }
+      }
+    },
+    "ConvertStep": {
+      "description": "Daemon-only. Convert completed files with one of the source extensions into the target format in the sandboxed converter pipeline.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/Extension" }
+        },
+        "to": { "$ref": "#/$defs/Extension" },
+        "keep_original": { "type": "boolean", "default": true }
+      }
+    },
+    "Post": {
+      "description": "Daemon-only. Naming, filing and conversion (08 section 4.11).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rename": { "$ref": "#/$defs/Template" },
+        "subdir": { "$ref": "#/$defs/Template" },
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/RoutingRule" }
+        },
+        "convert": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/ConvertStep" }
+        }
+      }
+    },
+    "Sinks": {
+      "description": "Daemon-only. Where results go (08 section 4.12).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dest_dir"],
+      "properties": {
+        "dest_dir": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "on_existing": { "enum": ["skip", "rename", "replace"], "default": "skip" },
+        "manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format"],
+          "properties": { "format": { "enum": ["jsonl", "csv", "croissant"] } }
+        },
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format"],
+          "properties": { "format": { "const": "jsonl" } }
+        }
+      }
+    },
+    "Plan": {
+      "description": "Daemon-only envelope around the portable vocabulary: one complete workflow plan (08 section 4).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_version", "name", "allowed_domains", "sources", "extract", "fetch", "budgets", "sinks"],
+      "properties": {
+        "plan_version": { "$ref": "#/$defs/PlanVersion" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "goal": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "allowed_domains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/DomainPattern" }
+        },
+        "session": { "$ref": "#/$defs/SessionRequirement" },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/Source" }
+        },
+        "pagination": { "$ref": "#/$defs/Pagination" },
+        "extract": { "$ref": "#/$defs/Extract" },
+        "filters": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/Filter" }
+        },
+        "fetch": { "$ref": "#/$defs/FetchPolicy" },
+        "budgets": { "$ref": "#/$defs/Budgets" },
+        "post": { "$ref": "#/$defs/Post", "default": {} },
+        "sinks": { "$ref": "#/$defs/Sinks" },
+        "stop": {
+          "$ref": "#/$defs/StopRules",
+          "default": { "no_new_items_pages": 3, "stop_on_duplicate_page": true, "on_drift": "pause" }
+        }
+      }
+    },
+    "Severity": {
+      "description": "Portable.",
+      "enum": ["info", "warning", "error"]
+    },
+    "Diagnostic": {
+      "description": "Portable. A finding about a plan, a sample or a run. Codes are plan.<reason> (08 section 6.3).",
+      "type": "object",
+      "required": ["severity", "code", "path", "message"],
+      "properties": {
+        "severity": { "$ref": "#/$defs/Severity" },
+        "code": { "type": "string", "maxLength": 96, "pattern": "^plan\\.[a-z][a-z0-9_]*$" },
+        "path": {
+          "description": "JSON Pointer (RFC 6901) into the plan; empty string for the whole plan.",
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^(/[^/]*)*$"
+        },
+        "message": { "type": "string", "maxLength": 1024 },
+        "details": {
+          "description": "Code-specific counts and indexes. Never page content, never URLs other than redacted ones.",
+          "type": "object"
+        }
+      }
+    },
+    "Estimate": {
+      "description": "Portable. An integer estimate with an uncertainty band: low and high are the P10 and P90 of the estimator (08 section 7.3).",
+      "type": "object",
+      "required": ["low", "point", "high", "basis"],
+      "properties": {
+        "low": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "point": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "high": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "basis": { "enum": ["exact", "count_hint", "pagination_bounds", "sample_extrapolation", "budget_cap"] }
+      }
+    },
+    "PageSample": {
+      "description": "Daemon-only. One sampled page returned by workflows.plan. The body is untrusted remote content (01 section 12.1).",
+      "type": "object",
+      "required": ["index", "url_redacted", "outcome", "status", "content_type", "format", "fetched_at", "bytes_total", "truncated", "simplified", "requires_session", "body"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0, "maximum": 15 },
+        "url_redacted": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "final_url_redacted": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "outcome": { "enum": ["ok", "robots_disallowed", "outside_allowed_domains", "error"] },
+        "status": { "type": ["integer", "null"], "minimum": 100, "maximum": 599 },
+        "content_type": { "type": ["string", "null"], "maxLength": 255 },
+        "format": { "enum": ["html", "json", "xml", "text", "none"] },
+        "fetched_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "bytes_total": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "truncated": { "type": "boolean" },
+        "simplified": { "type": "boolean" },
+        "requires_session": { "type": "boolean" },
+        "error": { "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorEnvelope" },
+        "body": { "type": "string", "maxLength": 524288 }
+      }
+    },
+    "FieldValues": {
+      "description": "Daemon-only. Extracted field values of one item. Untrusted remote text; URL-valued fields are redacted.",
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": { "$ref": "#/$defs/FieldName" },
+      "additionalProperties": { "type": "string", "maxLength": 4096 }
+    },
+    "PlannedItem": {
+      "description": "Daemon-only. One item of a dry-run sample.",
+      "type": "object",
+      "required": ["index", "url_redacted", "file_name", "action", "fields"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "url_redacted": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "file_name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "subdir": { "type": "string", "maxLength": 1024 },
+        "size_bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "media_type": { "type": "string", "maxLength": 127 },
+        "action": { "enum": ["enqueue", "skip_existing", "rename_existing", "replace_existing"] },
+        "collides_with": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "fields": { "$ref": "#/$defs/FieldValues" }
+      }
+    },
+    "HostReport": {
+      "description": "Daemon-only. Politeness and robots.txt findings for one host contacted by the dry run.",
+      "type": "object",
+      "required": ["host", "robots", "crawl_delay_ms", "effective_interval_ms", "disallowed_samples"],
+      "properties": {
+        "host": { "type": "string", "maxLength": 255 },
+        "robots": { "enum": ["allowed", "partially_disallowed", "disallowed", "not_found", "unreachable", "ignored"] },
+        "crawl_delay_ms": { "type": ["integer", "null"], "minimum": 0, "maximum": 3600000 },
+        "effective_interval_ms": { "type": "integer", "minimum": 200, "maximum": 3600000 },
+        "disallowed_samples": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "DryRunReport": {
+      "description": "Daemon-only. Result of workflows.dry_run: what a run would do, without downloading any file (08 section 7.3).",
+      "type": "object",
+      "required": ["plan_id", "plan_hash", "generated_at", "complete", "sampled_pages", "sample", "name_collisions", "existing_files", "estimate_pages", "estimate_files", "estimate_bytes", "estimate_duration_ms", "hosts", "session", "requires_browser", "warnings"],
+      "properties": {
+        "plan_id": { "$ref": "#/$defs/PlanId" },
+        "plan_hash": { "$ref": "#/$defs/PlanHash" },
+        "generated_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "complete": { "type": "boolean" },
+        "sampled_pages": { "type": "integer", "minimum": 0, "maximum": 30 },
+        "sample": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/PlannedItem" } },
+        "name_collisions": { "type": "integer", "minimum": 0 },
+        "existing_files": { "type": "integer", "minimum": 0 },
+        "estimate_pages": { "oneOf": [{ "$ref": "#/$defs/Estimate" }, { "type": "null" }] },
+        "estimate_files": { "oneOf": [{ "$ref": "#/$defs/Estimate" }, { "type": "null" }] },
+        "estimate_bytes": { "oneOf": [{ "$ref": "#/$defs/Estimate" }, { "type": "null" }] },
+        "estimate_duration_ms": { "oneOf": [{ "$ref": "#/$defs/Estimate" }, { "type": "null" }] },
+        "dominant_assumption": { "enum": ["item_count", "item_size", "throttling", "politeness"] },
+        "hosts": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/HostReport" } },
+        "session": { "enum": ["not_needed", "grant_effective", "grant_missing"] },
+        "requires_browser": { "type": "boolean" },
+        "warnings": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/Diagnostic" } }
+      }
+    },
+    "RunStatus": {
+      "description": "Daemon-only. State of a run (08 section 7.5).",
+      "enum": ["awaiting_approval", "running", "paused", "completed", "stopped", "budget_exhausted", "failed", "canceled"]
+    },
+    "PauseReason": {
+      "description": "Daemon-only.",
+      "enum": ["client", "drift", "page_error", "session", "kill_switch"]
+    },
+    "StopReason": {
+      "description": "Portable. Why a chain or a run ended (08 section 8.6).",
+      "enum": [
+        "sources_exhausted",
+        "no_new_items",
+        "duplicate_page",
+        "count_reached",
+        "pagination_limit",
+        "budget_pages",
+        "budget_files",
+        "budget_bytes",
+        "budget_duration",
+        "drift",
+        "canceled",
+        "error",
+        "approval_denied",
+        "approval_expired"
+      ]
+    },
+    "RunCounts": {
+      "description": "Daemon-only. Discovery counters commit with checkpoints; engine job outcome counts describe current durable state, so retry can change them. Pending job intents are excluded from files_enqueued in API reports.",
+      "type": "object",
+      "required": [
+        "pages_fetched", "pages_failed", "pages_skipped_robots",
+        "items_seen", "items_duplicate", "items_filtered", "items_out_of_domain", "items_invalid", "items_skipped_existing",
+        "files_enqueued", "files_completed", "files_failed", "files_canceled", "files_quarantined", "files_converted", "files_convert_failed",
+        "bytes_done"
+      ],
+      "properties": {
+        "pages_fetched": { "type": "integer", "minimum": 0 },
+        "pages_failed": { "type": "integer", "minimum": 0 },
+        "pages_skipped_robots": { "type": "integer", "minimum": 0 },
+        "items_seen": { "type": "integer", "minimum": 0 },
+        "items_duplicate": { "type": "integer", "minimum": 0 },
+        "items_filtered": { "type": "integer", "minimum": 0 },
+        "items_out_of_domain": { "type": "integer", "minimum": 0 },
+        "items_invalid": { "type": "integer", "minimum": 0 },
+        "items_skipped_existing": { "type": "integer", "minimum": 0 },
+        "files_enqueued": { "type": "integer", "minimum": 0 },
+        "files_completed": { "type": "integer", "minimum": 0 },
+        "files_failed": { "type": "integer", "minimum": 0 },
+        "files_canceled": { "type": "integer", "minimum": 0 },
+        "files_quarantined": { "type": "integer", "minimum": 0 },
+        "files_converted": { "type": "integer", "minimum": 0 },
+        "files_convert_failed": { "type": "integer", "minimum": 0 },
+        "bytes_done": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" }
+      }
+    },
+    "RunReport": {
+      "description": "Daemon-only. Progress and outcome of a run, as returned by workflows.get and workflows.list (08 section 10.2). Contains no full URLs.",
+      "type": "object",
+      "required": ["run_id", "plan_id", "plan_hash", "status", "pause_reason", "stop_reason", "possibly_incomplete", "approval_id", "grant_id", "created_at", "started_at", "finished_at", "updated_at", "elapsed_ms", "counts", "last_error", "drift"],
+      "properties": {
+        "report_version": { "type": "integer", "enum": [0, 1], "description": "Version 1 records complete counters from creation; 0 marks a legacy checkpoint." },
+        "run_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" },
+        "plan_id": { "$ref": "#/$defs/PlanId" },
+        "plan_hash": { "$ref": "#/$defs/PlanHash" },
+        "status": { "$ref": "#/$defs/RunStatus" },
+        "pause_reason": { "oneOf": [{ "$ref": "#/$defs/PauseReason" }, { "type": "null" }] },
+        "stop_reason": { "oneOf": [{ "$ref": "#/$defs/StopReason" }, { "type": "null" }] },
+        "possibly_incomplete": { "type": "boolean" },
+        "approval_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId" }, { "type": "null" }] },
+        "grant_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/GrantId" }, { "type": "null" }] },
+        "created_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }], "description": "Null when unavailable in a legacy checkpoint." },
+        "started_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
+        "finished_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
+        "updated_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }], "description": "Null when unavailable in a legacy checkpoint." },
+        "elapsed_ms": { "$ref": "https://zeus.invalid/schema/common#/$defs/DurationMs" },
+        "counts": { "oneOf": [{ "$ref": "#/$defs/RunCounts" }, { "type": "null" }], "description": "Null only for legacy checkpoints whose complete discovery counters were not retained." },
+        "last_error": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorEnvelope" }, { "type": "null" }] },
+        "drift": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/Diagnostic" } }
+      }
+    },
+    "ChainCheckpoint": {
+      "description": "Daemon-only. Position of one chain (08 section 9.2). Stored in the journal only: next_url is a full URL and may carry a cursor.",
+      "type": "object",
+      "required": ["chain", "source_index", "kind", "depth", "state", "end", "pages_fetched", "next_url", "consecutive_no_new", "fingerprints"],
+      "properties": {
+        "chain": { "type": "integer", "minimum": 0 },
+        "source_index": { "type": "integer", "minimum": 0, "maximum": 15 },
+        "kind": { "enum": ["start_url", "api_endpoint", "sitemap", "sitemap_page", "date_window"] },
+        "depth": { "type": "integer", "minimum": 0, "maximum": 8 },
+        "state": { "enum": ["pending", "active", "done"] },
+        "end": { "oneOf": [{ "$ref": "#/$defs/StopReason" }, { "type": "null" }] },
+        "pages_fetched": { "type": "integer", "minimum": 0 },
+        "next_url": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Url" }, { "type": "null" }] },
+        "page_value": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "window_index": { "type": "integer", "minimum": 0 },
+        "consecutive_no_new": { "type": "integer", "minimum": 0 },
+        "fingerprints": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" }
+        }
+      }
+    },
+    "Checkpoint": {
+      "description": "Daemon-only. What a run needs to resume after a restart (08 section 9). Stored in the journal table runs.",
+      "type": "object",
+      "required": ["run_id", "plan_hash", "checkpoint_seq", "updated_at", "elapsed_ms", "chains", "counts", "seen_keys_count", "next_item_index"],
+      "properties": {
+        "run_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" },
+        "plan_hash": { "$ref": "#/$defs/PlanHash" },
+        "checkpoint_seq": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "updated_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "elapsed_ms": { "$ref": "https://zeus.invalid/schema/common#/$defs/DurationMs" },
+        "chains": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/ChainCheckpoint" } },
+        "counts": { "$ref": "#/$defs/RunCounts" },
+        "seen_keys_count": { "type": "integer", "minimum": 0, "maximum": 2000000 },
+        "next_item_index": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "ItemRecord": {
+      "description": "Daemon-only. One line of the items sink (08 section 8.8): the extracted fields of an item that reached naming.",
+      "type": "object",
+      "required": ["record_type", "run_id", "index", "page_url", "url", "url_redacted", "fields", "action", "job_id", "path", "recorded_at"],
+      "properties": {
+        "record_type": { "const": "item" },
+        "run_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" },
+        "index": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "page_url": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "url": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "url_redacted": { "type": "boolean" },
+        "fields": { "$ref": "#/$defs/FieldValues" },
+        "action": { "enum": ["enqueued", "skipped_existing"] },
+        "job_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" }, { "type": "null" }] },
+        "path": { "type": ["string", "null"], "maxLength": 4096 },
+        "recorded_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }
+      }
+    }
+  }
+}

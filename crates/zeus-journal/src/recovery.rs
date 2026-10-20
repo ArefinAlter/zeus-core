@@ -3,10 +3,6 @@
 //! `zeusd` runs [`recover`] before accepting any connection. Every step is idempotent: a crash during
 //! recovery followed by another recovery gives the same result (invariant I11). Hashing is never
 //! performed during recovery; it happens later, in `verifying`.
-#![expect(
-    unused_variables,
-    reason = "skeleton: recovery is filled in by the zeus-journal implementation task"
-)]
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -49,7 +45,179 @@ impl std::fmt::Debug for RecoveryContext {
 /// files, expire grants and approvals, prune retention. Step 6 (outbox replay into the audit log and the
 /// manifest) is driven by the daemon from the cursors in `meta`. Returns the summary for `daemon.started`.
 pub fn recover(journal: &Journal, context: &RecoveryContext) -> JournalResult<RecoverySummary> {
-    Err(JournalError::NotImplemented("recover"))
+    use crate::journal::TransitionRequest;
+    use zeus_types::event::*;
+    use zeus_types::*;
+    let now = journal.clock().now();
+    let mut summary = RecoverySummary {
+        jobs_recovered: 0,
+        jobs_failed: 0,
+        orphans_found: 0,
+        audit_chain_ok: context.audit_chain_ok,
+    };
+    for record in journal.list_incomplete()? {
+        crate::fault::check(
+            journal.faults().as_ref(),
+            crate::fault::CrashPoint::DuringRecovery,
+        )?;
+        // Complete an interrupted atomic rename by file identity before scheduling any new network work.
+        if record.internal.finalize.is_some() && recover_finalization(journal, context, &record)? {
+            continue;
+        }
+        if !record.job.state.is_in_flight() {
+            continue;
+        }
+        let count = record.job.retry.recovery_count.saturating_add(1);
+        let failed = count >= 3;
+        let error = ErrorEnvelope::from_code(
+            codes::ENGINE_CRASH_LOOP,
+            "repeated daemon interruption without committed progress",
+        );
+        let after = if failed {
+            vec![
+                JobFailedData {
+                    error: error.clone(),
+                    suggested_next: SuggestedNext {
+                        action: SuggestedAction::Retry,
+                        tool: Some("zeus_control".into()),
+                    },
+                }
+                .into(),
+            ]
+        } else {
+            vec![]
+        };
+        journal.apply_transition(
+            TransitionRequest {
+                job_id: record.id(),
+                transition: if failed { "S96" } else { "S95" },
+                trigger: TransitionActor::System,
+                cause: if failed {
+                    StateCause::CrashLoop
+                } else {
+                    StateCause::Recovered
+                },
+                actor: Actor::system(),
+                now,
+                events_before: vec![],
+                events_after: after,
+            },
+            &mut |r| {
+                r.job.retry.recovery_count = count;
+                if failed {
+                    r.job.error = Some(error.clone());
+                }
+                Ok(())
+            },
+        )?;
+        if failed {
+            summary.jobs_failed += 1;
+        } else {
+            summary.jobs_recovered += 1;
+        }
+    }
+    let records = journal.read(|t| t.jobs(&crate::store::JobFilter::default()))?;
+    for record in &records {
+        if let Some(total) = record.internal.total_bytes {
+            for range in journal
+                .committed(record.id())?
+                .iter()
+                .filter(|r| r.end > total)
+            {
+                journal.invalidate_range(
+                    record.id(),
+                    ByteRange::new(range.start.max(total), range.end)?,
+                    InvalidationReason::FileTruncated,
+                    now,
+                )?;
+            }
+        }
+    }
+    let mut roots = context.scan_roots.clone();
+    let mut owned = std::collections::HashSet::new();
+    for record in &records {
+        if !record.job.state.is_terminal() {
+            let path = PathBuf::from(&record.internal.zpart_path);
+            owned.insert(path.clone());
+            if let Some(parent) = path.parent() {
+                roots.push(parent.to_path_buf());
+            }
+        }
+    }
+    roots.sort();
+    roots.dedup();
+    let retention = context.orphan_gc_age.max(Duration::from_secs(3600));
+    let oldest = now
+        .unix_millis()
+        .saturating_sub(retention.as_millis().min(i64::MAX as u128) as i64);
+    let mut seen = std::collections::HashSet::new();
+    for root in roots {
+        if context.fs.metadata(&root).map_err(fs_error)?.is_none() {
+            continue;
+        }
+        for entry in context.fs.read_dir(&root).map_err(fs_error)? {
+            if !entry.meta.is_regular_file
+                || !zeus_fs::finalize::is_zpart(&entry.path)
+                || owned.contains(&entry.path)
+                || !seen.insert(entry.path.clone())
+            {
+                continue;
+            }
+            summary.orphans_found += 1;
+            if entry.meta.len == 0 || entry.meta.mtime_ms < oldest {
+                context.fs.remove_file(&entry.path).map_err(fs_error)?;
+            }
+        }
+    }
+    journal.transact(|t| {
+        for reservation in t.reservations()? {
+            if t.job(reservation.job_id)?
+                .is_none_or(|r| r.job.state.is_terminal())
+            {
+                t.remove_reservation(&reservation.path_key)?;
+            }
+        }
+        for mut grant in t.grants()? {
+            if grant.state == GrantState::Active && grant.expires_at.is_some_and(|e| e <= now) {
+                grant.state = GrantState::Expired;
+                t.put_grant(&grant)?;
+                t.append_event(
+                    now,
+                    grant.job_id,
+                    grant.run_id,
+                    GrantExpiredData {
+                        grant_id: grant.id,
+                        origin: grant.origin,
+                    }
+                    .into(),
+                )?;
+            }
+        }
+        for mut approval in t.approvals(Some(&[ApprovalState::Pending]))? {
+            if approval.expires_at <= now {
+                approval.state = ApprovalState::Expired;
+                approval.decided_at = Some(now);
+                t.put_approval(&approval)?;
+                t.append_event(
+                    now,
+                    approval.job_id,
+                    approval.run_id,
+                    ApprovalDecidedData {
+                        approval_id: approval.id,
+                        kind: approval.kind,
+                        outcome: DecisionOutcome::Expire,
+                        scope: None,
+                        actor: Actor::system(),
+                        grant_id: None,
+                    }
+                    .into(),
+                )?;
+            }
+        }
+        t.expire_idempotency(now)?;
+        Ok(())
+    })?;
+    Ok(summary)
 }
 
 /// What the local checks of 03 section 7.2 concluded for one job.
@@ -73,11 +241,262 @@ pub fn assess_resume(
     record: &JobRecord,
     journal: &Journal,
 ) -> JournalResult<ResumeAssessment> {
-    Err(JournalError::NotImplemented("assess_resume"))
+    let mut trusted = journal.committed(record.id())?;
+    let before = trusted.covered_bytes();
+    let mut invalidated = None;
+    let metadata = fs
+        .metadata(std::path::Path::new(&record.internal.zpart_path))
+        .map_err(fs_error)?;
+    let Some(meta) = metadata else {
+        trusted.clear();
+        return Ok(ResumeAssessment {
+            trusted,
+            invalidated: (before > 0).then_some(InvalidationReason::FileTruncated),
+            dropped_bytes: before,
+        });
+    };
+    if !meta.is_regular_file || meta.file_id != record.internal.zpart_file_id {
+        trusted.clear();
+        return Ok(ResumeAssessment {
+            trusted,
+            invalidated: (before > 0).then_some(InvalidationReason::FileReplaced),
+            dropped_bytes: before,
+        });
+    }
+    if trusted.truncate_to(meta.len) > 0 {
+        invalidated = Some(InvalidationReason::FileTruncated);
+    }
+    if record.internal.resume_recheck != crate::records::ResumeRecheck::None && !trusted.is_empty()
+    {
+        let file = fs
+            .open_existing(std::path::Path::new(&record.internal.zpart_path))
+            .map_err(fs_error)?;
+        if Some(file.file_id().map_err(fs_error)?) != record.internal.zpart_file_id {
+            trusted.clear();
+            return Ok(ResumeAssessment {
+                trusted,
+                invalidated: Some(InvalidationReason::FileReplaced),
+                dropped_bytes: before,
+            });
+        }
+        let rows = journal.read(|t| t.all_unit_crcs(record.id()))?;
+        let full = record.internal.resume_recheck == crate::records::ResumeRecheck::Full;
+        let mut failure = false;
+        let mut consecutive = 0;
+        for (n, row) in rows.iter().rev().enumerate() {
+            if !full && n >= 16 && (!failure || consecutive >= 4) {
+                break;
+            }
+            let range = zeus_types::ByteRange::from_offset_len(row.offset, row.length.into())?;
+            if range.is_empty() || trusted.covered_in(range) == 0 {
+                continue;
+            }
+            let mut offset = 0;
+            let mut crc = 0;
+            let mut buffer = vec![0; (row.length as usize).min(64 << 10)];
+            let mut ok = true;
+            while offset < row.length as u64 {
+                let len = ((row.length as u64 - offset) as usize).min(buffer.len());
+                if file
+                    .read_exact_at(row.offset + offset, &mut buffer[..len])
+                    .is_err()
+                {
+                    ok = false;
+                    break;
+                }
+                crc = crc32c::crc32c_append(crc, &buffer[..len]);
+                offset += len as u64;
+            }
+            if !ok || crc != row.crc32c {
+                trusted.remove(range);
+                invalidated.get_or_insert(InvalidationReason::TailCheckFailed);
+                failure = true;
+                consecutive = 0;
+            } else {
+                consecutive += 1;
+            }
+        }
+    }
+    let dropped_bytes = before - trusted.covered_bytes();
+    Ok(ResumeAssessment {
+        trusted,
+        invalidated,
+        dropped_bytes,
+    })
 }
 
 /// Default orphan garbage-collection age: 7 days.
 pub const DEFAULT_ORPHAN_GC_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
+
+fn fs_error(e: zeus_fs::FsError) -> JournalError {
+    JournalError::Storage(e.to_string())
+}
+
+fn recover_finalization(
+    journal: &Journal,
+    context: &RecoveryContext,
+    record: &JobRecord,
+) -> JournalResult<bool> {
+    use zeus_fs::finalize::*;
+    use zeus_types::*;
+    let Some(intent) = &record.internal.finalize else {
+        return Ok(false);
+    };
+    let Some(verify) = &record.internal.verify_result else {
+        return Err(JournalError::Invariant(
+            "finalize intent lacks verification",
+        ));
+    };
+    let tmp = std::path::Path::new(&intent.tmp_path);
+    let dest = std::path::Path::new(&intent.dest_path);
+    let observed = FinalizeObservation {
+        tmp: context
+            .fs
+            .metadata(tmp)
+            .map_err(fs_error)?
+            .and_then(|m| m.file_id),
+        dest: context
+            .fs
+            .metadata(dest)
+            .map_err(fs_error)?
+            .and_then(|m| m.file_id),
+    };
+    let mut target = dest.to_path_buf();
+    match decide_recovery(&observed, &intent.file_id) {
+        RecoveryAction::RepeatRename => {
+            context.fs.rename_noreplace(tmp, dest).map_err(fs_error)?;
+        }
+        RecoveryAction::ContinueAfterRename => {}
+        RecoveryAction::PickNewName => {
+            if record.job.spec.overwrite() != Overwrite::Rename {
+                return Err(JournalError::Invariant(
+                    "foreign destination blocks finalization recovery",
+                ));
+            }
+            let parent = dest
+                .parent()
+                .ok_or(JournalError::Invariant("destination has no parent"))?;
+            let name = zeus_fs::unique_name(
+                &dest
+                    .file_name()
+                    .ok_or(JournalError::Invariant("destination has no name"))?
+                    .to_string_lossy(),
+                &|n| {
+                    context
+                        .fs
+                        .metadata(&parent.join(n))
+                        .map_or(true, |m| m.is_some())
+                },
+                zeus_fs::CollisionStrategy::Counter,
+                context.fs.is_case_insensitive(parent).map_err(fs_error)?,
+            )
+            .map_err(fs_error)?;
+            target = parent.join(name);
+            journal.transact(|t| {
+                let mut r = t
+                    .job(record.id())?
+                    .ok_or(JournalError::NotFound { what: "job" })?;
+                r.internal.dest_path = target.to_string_lossy().into_owned();
+                if let Some(f) = r.internal.finalize.as_mut() {
+                    f.dest_path = r.internal.dest_path.clone();
+                }
+                t.put_job(&r)
+            })?;
+            context
+                .fs
+                .rename_noreplace(tmp, &target)
+                .map_err(fs_error)?;
+        }
+        RecoveryAction::Lost => {
+            let error = ErrorEnvelope::from_code(
+                codes::FS_FINALIZE_LOST,
+                "verified file identity cannot be recovered",
+            );
+            journal.apply_transition(
+                crate::TransitionRequest {
+                    job_id: record.id(),
+                    transition: "S82",
+                    trigger: TransitionActor::Engine,
+                    cause: StateCause::FinalizeError,
+                    actor: Actor::system(),
+                    now: journal.clock().now(),
+                    events_before: vec![],
+                    events_after: vec![
+                        zeus_types::event::JobFailedData {
+                            error: error.clone(),
+                            suggested_next: zeus_types::event::SuggestedNext {
+                                action: zeus_types::event::SuggestedAction::FixDestination,
+                                tool: None,
+                            },
+                        }
+                        .into(),
+                    ],
+                },
+                &mut |r| {
+                    r.job.error = Some(error.clone());
+                    r.internal.finalize = None;
+                    Ok(())
+                },
+            )?;
+            return Ok(true);
+        }
+    }
+    context
+        .fs
+        .sync_dir(
+            target
+                .parent()
+                .ok_or(JournalError::Invariant("destination has no parent"))?,
+        )
+        .map_err(fs_error)?;
+    let now = journal.clock().now();
+    let target = target.to_string_lossy().into_owned();
+    // Normally the persisted state is finalizing; an interrupted older recovery may have queued it.
+    if record.job.state != JobState::Finalizing {
+        return Err(JournalError::Invariant(
+            "finalize intent outside finalizing state",
+        ));
+    }
+    let quarantined = !record.job.quarantine_reasons.is_empty();
+    journal.finish_job(
+        crate::TransitionRequest {
+            job_id: record.id(),
+            transition: "S80",
+            trigger: TransitionActor::Engine,
+            cause: StateCause::Finalized,
+            actor: Actor::engine(),
+            now,
+            events_before: vec![
+                zeus_types::event::JobCompletedData {
+                    path: target.clone(),
+                    size_bytes: verify.size_bytes,
+                    sha256: verify.sha256,
+                    blake3: verify.blake3,
+                    quarantined,
+                    duration_ms: now
+                        .unix_millis()
+                        .saturating_sub(record.job.created_at.unix_millis())
+                        .max(0) as u64,
+                }
+                .into(),
+            ],
+            events_after: vec![],
+        },
+        &mut |r| {
+            r.job.quarantined = quarantined;
+            r.job.result = Some(JobResult {
+                path: target.clone(),
+                size_bytes: verify.size_bytes,
+                sha256: verify.sha256,
+                blake3: verify.blake3,
+                detected_mime: verify.detected_mime.clone(),
+                completed_at: now,
+            });
+            Ok(())
+        },
+    )?;
+    Ok(true)
+}
 
 #[cfg(test)]
 mod tests {

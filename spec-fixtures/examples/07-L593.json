@@ -1,0 +1,9 @@
+{
+  "approval_id": "ap_01M465YFSGE0S6JG9A0WZWQ2F2",
+  "request_hash": "e597f6a196cf33172c91da16f2047d995f681858602741c00414358a0b5302b7",
+  "outcome": "approve",
+  "scope": "once",
+  "channel": "cli_interactive",
+  "confirmation": "gesture",
+  "idempotency_key": "tty-18422-ap_01M465YFSGE0S6JG9A0WZWQ2F2"
+}

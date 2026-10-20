@@ -1,0 +1,7 @@
+{
+  "code": "policy.path_outside_roots",
+  "class": "policy_denied",
+  "message": "dir is not inside a Zeus write root.",
+  "retryable": false,
+  "next": { "action": "fix_destination" }
+}

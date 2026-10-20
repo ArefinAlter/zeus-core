@@ -1,0 +1,2 @@
+{"seq":52101,"ts":"2026-10-06T09:12:45.120Z","type":"grant.revoked","data":{"grant_id":"gr_01M480RFA0TEV0HDZZE5JVV8P8","origin":"https://media.example.net","by":{"kind":"human","surface":"tui","client_id":"cli_01M3V7ME01HNR0ATMA0D0XY9CW"}}}
+{"seq":52104,"ts":"2026-10-06T09:12:45.120Z","type":"daemon.kill_switch","data":{"engaged":true,"grants_revoked":3,"jobs_paused":5,"by":{"kind":"human","surface":"tui","client_id":"cli_01M3V7ME01HNR0ATMA0D0XY9CW"}}}

@@ -1,10 +1,4 @@
 //! CUSUM change-point detection for throttle detection (a sustained downward shift of throughput).
-#![expect(
-    unused_variables,
-    dead_code,
-    reason = "skeleton: bodies are filled in by the zeus-control implementation task"
-)]
-
 use crate::error::{ControlError, Result, finite};
 
 /// Verdict of one [`Cusum`] update.
@@ -50,9 +44,22 @@ impl Cusum {
         })
     }
 
-    /// Folds in one observation.
+    /// Folds in one observation: `high = max(0, high + x - target - slack)` and
+    /// `low = max(0, low + target - slack - x)`. A sum above `threshold` reports its shift and resets both.
     pub fn update(&mut self, value: f64) -> Result<Shift> {
-        Err(ControlError::NotImplemented("Cusum::update"))
+        finite("value", value)?;
+        self.high = (self.high + value - self.target - self.slack).max(0.0);
+        self.low = (self.low + self.target - self.slack - value).max(0.0);
+        let shift = if self.low > self.threshold {
+            Shift::Down
+        } else if self.high > self.threshold {
+            Shift::Up
+        } else {
+            return Ok(Shift::None);
+        };
+        self.high = 0.0;
+        self.low = 0.0;
+        Ok(shift)
     }
 }
 
@@ -66,5 +73,23 @@ mod tests {
         assert!(Cusum::new(f64::NAN, 5.0, 20.0).is_err());
         assert!(Cusum::new(100.0, -1.0, 20.0).is_err());
         assert!(Cusum::new(100.0, 1.0, 0.0).is_err());
+    }
+
+    #[test]
+    fn noise_within_the_slack_never_alarms_but_a_sustained_drop_does() {
+        let mut c = Cusum::new(100.0, 5.0, 20.0).unwrap();
+        for x in [103.0, 97.0, 104.0, 96.0, 100.0, 105.0, 95.0] {
+            assert_eq!(c.update(x).unwrap(), Shift::None);
+        }
+        // Throttled to 80: each sample adds 15 to the low sum, so the second one crosses 20.
+        assert_eq!(c.update(80.0).unwrap(), Shift::None);
+        assert_eq!(c.update(80.0).unwrap(), Shift::Down);
+        assert_eq!(
+            c.update(100.0).unwrap(),
+            Shift::None,
+            "sums reset after a report"
+        );
+        assert_eq!(c.update(130.0).unwrap(), Shift::Up);
+        assert!(c.update(f64::NAN).is_err());
     }
 }

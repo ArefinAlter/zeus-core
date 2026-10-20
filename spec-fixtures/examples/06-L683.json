@@ -1,0 +1,7 @@
+{
+  "code": "net.dns_failure",
+  "class": "transient_network",
+  "message": "Name resolution failed for files.example.com.",
+  "retryable": true,
+  "next": { "action": "retry", "tool": "zeus_probe" }
+}

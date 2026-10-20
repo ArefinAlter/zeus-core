@@ -1,0 +1,8 @@
+{
+  "idempotency_key": "research-cloud-plan-1",
+  "request": {
+    "action": "plan", "account_id": "research", "mode": "staged_upload",
+    "source": { "kind": "public_url", "url": "https://example.org/report.zip", "size_bytes": 1048576 },
+    "remote_name": "report.zip", "max_bytes": 1048576, "max_seconds": 1800
+  }
+}

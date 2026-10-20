@@ -4,15 +4,12 @@
 //! renews or revokes grants; this trait is the daemon's persistence-neutral view of them, and an
 //! in-memory implementation is provided for tests and embedders. The extension keeps its own consent
 //! records for the release gate (02 section 10.2); those live in TypeScript, not here.
-#![expect(
-    unused_variables,
-    dead_code,
-    reason = "skeleton: InMemoryConsentStore is filled in by the zeus-session implementation task"
-)]
-
 use std::sync::Mutex;
 
-use zeus_types::{Actor, ApprovalId, GrantId, JobId, Origin, RunId, SessionGrant, Timestamp};
+use zeus_types::{
+    Actor, ApprovalId, GrantId, GrantScope, GrantState, IdGenerator, JobId, Origin, RunId,
+    SessionGrant, Timestamp,
+};
 
 use crate::error::{SessionError, SessionResult};
 
@@ -103,15 +100,69 @@ impl InMemoryConsentStore {
 
 impl ConsentStore for InMemoryConsentStore {
     fn create(&self, new: NewGrant, now: Timestamp) -> SessionResult<SessionGrant> {
-        Err(SessionError::NotImplemented("InMemoryConsentStore::create"))
+        if !new.decided_by.is_human_on_trust_surface()
+            || !new
+                .decided_by
+                .surface
+                .is_some_and(zeus_types::Surface::is_approving_surface)
+        {
+            return Err(SessionError::Protocol(
+                "grant requires a human trust surface",
+            ));
+        }
+        if (new.scope == GrantScope::Once && new.job_id.is_none())
+            || (new.scope == GrantScope::Workflow && new.run_id.is_none())
+        {
+            return Err(SessionError::Protocol("grant scope lacks binding"));
+        }
+        let grant = SessionGrant {
+            id: IdGenerator::new().grant_id(),
+            origin: new.origin,
+            scope: new.scope,
+            state: GrantState::Active,
+            created_at: now,
+            expires_at: new.scope.lifetime_ms().map(|ms| now.saturating_add_ms(ms)),
+            job_id: new.job_id,
+            run_id: new.run_id,
+            approval_id: new.approval_id,
+            decided_by: new.decided_by,
+            uses: 0,
+            last_used_at: None,
+            revoked_at: None,
+            renewable: new.scope.renewable(),
+            renewal_count: 0,
+            renewed_at: None,
+            revoked_by: None,
+            revocation_reason: None,
+        };
+        self.grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(grant.clone());
+        Ok(grant)
     }
 
     fn get(&self, id: GrantId) -> SessionResult<Option<SessionGrant>> {
-        Err(SessionError::NotImplemented("InMemoryConsentStore::get"))
+        Ok(self
+            .grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .find(|g| g.id == id)
+            .cloned())
     }
 
     fn list(&self, include_inactive: bool) -> SessionResult<Vec<SessionGrant>> {
-        Err(SessionError::NotImplemented("InMemoryConsentStore::list"))
+        let mut grants: Vec<_> = self
+            .grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|g| include_inactive || g.is_effective_at(Timestamp::now()))
+            .cloned()
+            .collect();
+        grants.sort_by_key(|g| std::cmp::Reverse(g.created_at));
+        Ok(grants)
     }
 
     fn resolve(
@@ -121,35 +172,123 @@ impl ConsentStore for InMemoryConsentStore {
         run: Option<RunId>,
         now: Timestamp,
     ) -> SessionResult<Resolution> {
-        Err(SessionError::NotImplemented(
-            "InMemoryConsentStore::resolve",
-        ))
+        let grants = self
+            .grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Ok(
+            match zeus_types::grant::resolve_grant(grants.iter(), origin, job, run, now) {
+                zeus_types::grant::GrantResolution::Denied(g) => Resolution::Denied(g.clone()),
+                zeus_types::grant::GrantResolution::Allowed(g) => Resolution::Allowed(g.clone()),
+                zeus_types::grant::GrantResolution::None => Resolution::None,
+            },
+        )
     }
 
     fn record_use(&self, id: GrantId, now: Timestamp) -> SessionResult<SessionGrant> {
-        Err(SessionError::NotImplemented(
-            "InMemoryConsentStore::record_use",
-        ))
+        let mut grants = self
+            .grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let g = grants
+            .iter_mut()
+            .find(|g| g.id == id)
+            .ok_or(SessionError::Protocol("unknown grant"))?;
+        if !g.is_effective_at(now) || g.scope == GrantScope::Never {
+            return Err(SessionError::Protocol("grant is not effective"));
+        }
+        g.uses += 1;
+        g.last_used_at = Some(now);
+        Ok(g.clone())
     }
 
     fn revoke(&self, id: GrantId, by: &Actor, now: Timestamp) -> SessionResult<SessionGrant> {
-        Err(SessionError::NotImplemented("InMemoryConsentStore::revoke"))
+        if !by.is_human_on_trust_surface()
+            || !by
+                .surface
+                .is_some_and(zeus_types::Surface::is_approving_surface)
+        {
+            return Err(SessionError::Protocol(
+                "revocation requires a human trust surface",
+            ));
+        }
+        let mut grants = self
+            .grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let g = grants
+            .iter_mut()
+            .find(|g| g.id == id)
+            .ok_or(SessionError::Protocol("unknown grant"))?;
+        if g.state != GrantState::Revoked {
+            g.state = GrantState::Revoked;
+            g.revoked_at = Some(now);
+            g.revoked_by = Some(by.clone());
+            g.revocation_reason = Some(zeus_types::grant::RevocationReason::UserRequest);
+        }
+        Ok(g.clone())
     }
 
     fn renew(&self, id: GrantId, by: &Actor, now: Timestamp) -> SessionResult<SessionGrant> {
-        Err(SessionError::NotImplemented("InMemoryConsentStore::renew"))
+        if !by.is_human_on_trust_surface()
+            || !by
+                .surface
+                .is_some_and(zeus_types::Surface::is_approving_surface)
+        {
+            return Err(SessionError::Protocol(
+                "renewal requires a human trust surface",
+            ));
+        }
+        let mut grants = self
+            .grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let g = grants
+            .iter_mut()
+            .find(|g| g.id == id)
+            .ok_or(SessionError::Protocol("unknown grant"))?;
+        if g.scope != GrantScope::Workflow
+            || g.state == GrantState::Revoked
+            || g.state == GrantState::Consumed
+        {
+            return Err(SessionError::Protocol("grant cannot be renewed"));
+        }
+        g.state = GrantState::Active;
+        g.expires_at = Some(now.saturating_add_ms(604_800_000));
+        g.renewal_count += 1;
+        g.renewed_at = Some(now);
+        Ok(g.clone())
     }
 
     fn consume_for_job(&self, job: JobId, now: Timestamp) -> SessionResult<Vec<SessionGrant>> {
-        Err(SessionError::NotImplemented(
-            "InMemoryConsentStore::consume_for_job",
-        ))
+        let mut grants = self
+            .grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut changed = Vec::new();
+        for g in grants.iter_mut().filter(|g| {
+            g.job_id == Some(job) && g.scope == GrantScope::Once && g.is_effective_at(now)
+        }) {
+            g.state = GrantState::Consumed;
+            changed.push(g.clone());
+        }
+        Ok(changed)
     }
 
     fn sweep_expired(&self, now: Timestamp) -> SessionResult<Vec<SessionGrant>> {
-        Err(SessionError::NotImplemented(
-            "InMemoryConsentStore::sweep_expired",
-        ))
+        let mut grants = self
+            .grants
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut changed = Vec::new();
+        for g in grants
+            .iter_mut()
+            .filter(|g| g.state == GrantState::Active && g.expires_at.is_some_and(|t| t <= now))
+        {
+            g.state = GrantState::Expired;
+            changed.push(g.clone());
+        }
+        Ok(changed)
     }
 }
 
@@ -160,9 +299,6 @@ mod tests {
     #[test]
     fn the_store_trait_is_object_safe() {
         let store: Box<dyn ConsentStore> = Box::new(InMemoryConsentStore::new());
-        assert!(matches!(
-            store.list(true),
-            Err(SessionError::NotImplemented(_))
-        ));
+        assert!(store.list(true).unwrap().is_empty());
     }
 }

@@ -84,7 +84,7 @@ impl ArchiveGuard {
 
     /// Records `entry` and returns the violated limit, if any. After a violation the caller stops.
     pub fn observe(&mut self, entry: &EntryInfo<'_>) -> Result<(), ArchiveViolation> {
-        if entry_path_escapes(entry.path) {
+        if entry.is_link || entry_path_escapes(entry.path) {
             return Err(ArchiveViolation::PathEscape);
         }
         if entry.depth > self.limits.max_depth {
@@ -98,7 +98,9 @@ impl ArchiveGuard {
         if self.total_bytes > self.limits.max_total_bytes {
             return Err(ArchiveViolation::TotalBytes);
         }
-        if entry.uncompressed_bytes / entry.compressed_bytes.max(1) > self.limits.max_ratio {
+        if u128::from(entry.uncompressed_bytes)
+            > u128::from(entry.compressed_bytes.max(1)) * u128::from(self.limits.max_ratio)
+        {
             return Err(ArchiveViolation::Ratio);
         }
         Ok(())
@@ -113,7 +115,7 @@ pub fn entry_path_escapes(path: &str) -> bool {
     normalised.starts_with('/')
         || normalised.contains('\0')
         || normalised.split('/').any(|c| c == "..")
-        || normalised.as_bytes().get(1) == Some(&b':')
+        || normalised.contains(':')
 }
 
 #[cfg(test)]

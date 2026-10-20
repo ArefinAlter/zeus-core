@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":23,"result":{"checks":[{"id":"journal.writable","status":"ok","summary":"Journal opened read-write."},{"id":"native_host.registered","status":"warn","summary":"No native-messaging manifest found for Firefox.","fix":"Run zeus native-host install --browser firefox."}]}}

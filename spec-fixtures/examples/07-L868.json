@@ -1,0 +1,17 @@
+{
+  "id": "gr_01M3RRNJM04D9FTTF4SY2YMFE8",
+  "origin": "https://portal.example.org",
+  "scope": "workflow",
+  "state": "active",
+  "created_at": "2026-09-30T09:00:00.000Z",
+  "expires_at": "2026-10-13T08:52:10.000Z",
+  "run_id": "run_01M3RRNJM041DSY9CRWM6A07TQ",
+  "approval_id": "ap_01M3RRK4G0T5PVF241SY96S258",
+  "decided_by": { "kind": "human", "surface": "tui" },
+  "uses": 412,
+  "last_used_at": "2026-10-06T08:51:00.000Z",
+  "revoked_at": null,
+  "renewable": true,
+  "renewal_count": 1,
+  "renewed_at": "2026-10-06T08:52:10.000Z"
+}

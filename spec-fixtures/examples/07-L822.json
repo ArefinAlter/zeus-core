@@ -1,0 +1,16 @@
+{
+  "id": "gr_01M46601S6FRJ8B3Z889X861XE",
+  "origin": "https://files.example.com",
+  "scope": "once",
+  "state": "consumed",
+  "created_at": "2026-10-05T14:03:02.310Z",
+  "expires_at": "2026-10-06T14:03:02.310Z",
+  "job_id": "job_01M465YFRJ5SCBKZ1W5VGH7GR9",
+  "approval_id": "ap_01M465YFSGE0S6JG9A0WZWQ2F2",
+  "decided_by": { "kind": "human", "surface": "cli_interactive", "client_id": "cli_01M3V7ME01HNR0ATMA0D0XY9CW" },
+  "uses": 2,
+  "last_used_at": "2026-10-05T14:05:40.000Z",
+  "revoked_at": null,
+  "renewable": false,
+  "renewal_count": 0
+}

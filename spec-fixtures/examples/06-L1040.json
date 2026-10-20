@@ -1,0 +1,6 @@
+{
+  "grants": [
+    { "grant_id": "gr_01M45NHPJP04TX6B1CJVQVQAK9", "origin": "https://portal.example.org", "scope": "site", "state": "active", "expires_at": "2026-10-06T09:15:34.870Z", "uses": 3, "last_used_at": "2026-10-05T11:20:02.114Z" },
+    { "grant_id": "gr_01M48AKV3G9ECVHM0QC0WWCYV5", "origin": "https://tracker.example.net", "scope": "never", "state": "active", "uses": 0 }
+  ]
+}

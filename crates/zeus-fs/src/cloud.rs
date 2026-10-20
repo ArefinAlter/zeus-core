@@ -28,8 +28,8 @@ pub enum CloudProvider {
 /// case-insensitive. The implementation task adds file-system type and network-share detection.
 #[must_use]
 pub fn detect_cloud_synced(path: &Path) -> Option<CloudProvider> {
-    for component in path.components() {
-        let name = component.as_os_str().to_string_lossy().to_lowercase();
+    for component in path.to_string_lossy().split(['/', '\\']) {
+        let name = component.to_lowercase();
         let found = if name == "onedrive" || name.starts_with("onedrive - ") {
             Some(CloudProvider::OneDrive)
         } else if name == "dropbox" || name.starts_with("dropbox (") {

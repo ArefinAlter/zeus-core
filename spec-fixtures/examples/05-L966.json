@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":19,"result":{"values":{"files.write_roots":["/home/ada/Downloads/Zeus"],"engine.max_concurrent_jobs":4,"engine.connections_per_job":8,"api.rate_limits.agent.mutating_per_s":50},"redacted_keys":["llm.providers.openrouter.api_key"]}}

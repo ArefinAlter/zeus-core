@@ -3,10 +3,6 @@
 //!
 //! Journal bookkeeping (`finalize.phase = intent`, the S80 commit) belongs to the engine; this module
 //! performs the file-system operations and answers "which side of the rename did a crash fall on?".
-#![expect(
-    unused_variables,
-    reason = "skeleton: bodies are filled in by the zeus-fs implementation task"
-)]
 
 use std::path::{Path, PathBuf};
 
@@ -41,7 +37,58 @@ pub struct FinalizeOutcome {
 /// identity is re-checked before the rename (03 section 14); a swapped directory fails with
 /// [`FsError::OutsideRoots`].
 pub fn rename_into_place(fs: &dyn Filesystem, plan: &FinalizePlan) -> FsResult<FinalizeOutcome> {
-    Err(FsError::NotImplemented("rename_into_place"))
+    let parent = plan.dest_path.parent().ok_or(FsError::OutsideRoots)?;
+    let tmp_parent = plan.tmp_path.parent().ok_or(FsError::OutsideRoots)?;
+    if fs.canonicalize(parent)? != fs.canonicalize(tmp_parent)? {
+        return Err(FsError::OutsideRoots);
+    }
+    if !fs
+        .metadata(&plan.tmp_path)?
+        .is_some_and(|m| m.is_regular_file)
+    {
+        return Err(FsError::SymlinkRefused);
+    }
+    let mut dest = plan.dest_path.clone();
+    let mut replaced = false;
+    loop {
+        match fs.rename_noreplace(&plan.tmp_path, &dest) {
+            Ok(()) => break,
+            Err(FsError::AlreadyExists) => match plan.overwrite {
+                Overwrite::Fail => return Err(FsError::AlreadyExists),
+                Overwrite::Replace => {
+                    fs.replace_with_backup(
+                        &plan.tmp_path,
+                        &dest,
+                        plan.backup_path
+                            .as_deref()
+                            .ok_or(FsError::InvalidName("replace requires backup path"))?,
+                    )?;
+                    replaced = true;
+                    break;
+                }
+                Overwrite::Rename => {
+                    let desired = plan
+                        .dest_path
+                        .file_name()
+                        .ok_or(FsError::InvalidName("missing file name"))?
+                        .to_string_lossy();
+                    let name = crate::names::unique_name(
+                        &desired,
+                        &|n| fs.metadata(&parent.join(n)).map_or(true, |m| m.is_some()),
+                        crate::names::CollisionStrategy::Counter,
+                        fs.is_case_insensitive(parent)?,
+                    )?;
+                    dest = parent.join(name);
+                }
+            },
+            Err(e) => return Err(e),
+        }
+    }
+    fs.sync_dir(parent)?;
+    Ok(FinalizeOutcome {
+        final_path: dest,
+        replaced_existing: replaced,
+    })
 }
 
 /// Where a crash during `finalizing` left the files, as observed by recovery.
@@ -71,7 +118,8 @@ pub enum RecoveryAction {
 #[must_use]
 pub fn decide_recovery(observed: &FinalizeObservation, expected: &FileId) -> RecoveryAction {
     match (&observed.tmp, &observed.dest) {
-        (Some(_), None) => RecoveryAction::RepeatRename,
+        (Some(tmp), None) if tmp == expected => RecoveryAction::RepeatRename,
+        (Some(_), None) => RecoveryAction::Lost,
         (None, Some(dest)) if dest == expected => RecoveryAction::ContinueAfterRename,
         (None, Some(_)) | (None, None) => RecoveryAction::Lost,
         (Some(tmp), Some(_)) if tmp == expected => RecoveryAction::PickNewName,

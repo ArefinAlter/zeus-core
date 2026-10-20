@@ -3,10 +3,6 @@
 //! [`Journal`] wraps an `Arc<dyn JournalStore>` with the operations of the commit protocol: atomic
 //! transactions, job creation, committed-range queries, and the multi-row operations that must be one
 //! transaction (a commit round, a state transition with its events, an invalidation, finalization).
-#![expect(
-    unused_variables,
-    reason = "skeleton: the multi-row protocol operations are filled in by the zeus-journal implementation task"
-)]
 
 use std::path::Path;
 use std::sync::Arc;
@@ -194,14 +190,35 @@ impl Journal {
         }
         let now = self.clock.now();
         self.transact(|txn| {
+            if txn.job(record.id())?.is_some() {
+                return Err(JournalError::Invariant("job already exists"));
+            }
             txn.put_job(record)?;
             if let Some(r) = reservation {
                 txn.put_reservation(r)?;
             }
-            events
-                .into_iter()
-                .map(|(job, payload)| txn.append_event(now, job, None, payload))
-                .collect()
+            let mut record = record.clone();
+            let mut appended = Vec::new();
+            for (job, payload) in events {
+                let event = txn.append_event(now, job, record.job.spec.source.run_id, payload)?;
+                if job == Some(record.id())
+                    && matches!(
+                        event.payload.kind(),
+                        Some(
+                            zeus_types::EventKind::JobCreated
+                                | zeus_types::EventKind::JobStateChanged
+                        )
+                    )
+                {
+                    record.internal.last_state_seq = event
+                        .seq
+                        .ok_or(JournalError::Invariant("journal event lacks sequence"))?
+                        .get();
+                }
+                appended.push(event);
+            }
+            txn.put_job(&record)?;
+            Ok(appended)
         })
     }
 
@@ -218,7 +235,116 @@ impl Journal {
         units: &[CommitUnit],
         now: Timestamp,
     ) -> JournalResult<RoundOutcome> {
-        Err(JournalError::NotImplemented("Journal::commit_round"))
+        self.commit_round_guarded(units, now, &mut |_, _| Ok(true))
+    }
+
+    /// Commit a synced round only when `guard` still permits each job inside the same
+    /// serialized write transaction. The durable kill switch is always checked first.
+    /// A refused unit is discarded without changing ranges or checksums.
+    pub fn commit_round_guarded(
+        &self,
+        units: &[CommitUnit],
+        now: Timestamp,
+        guard: &mut dyn FnMut(&dyn ReadTxn, &JobRecord) -> JournalResult<bool>,
+    ) -> JournalResult<RoundOutcome> {
+        crate::fault::check(
+            self.faults.as_ref(),
+            crate::fault::CrashPoint::AfterSyncBeforeCommit,
+        )?;
+        let outcome = self.transact(|txn| {
+            let mut outcome = RoundOutcome::default();
+            for unit in units {
+                let Some(mut record) = txn.job(unit.job_id)? else {
+                    outcome.discarded.push(*unit);
+                    continue;
+                };
+                if txn.meta()?.kill_switch_engaged()
+                    || record.internal.epoch != unit.epoch
+                    || record.job.state != JobState::Downloading
+                    || !guard(txn, &record)?
+                {
+                    outcome.discarded.push(*unit);
+                    continue;
+                }
+                if unit.range.is_empty()
+                    || record
+                        .internal
+                        .total_bytes
+                        .is_some_and(|total| unit.range.end > total)
+                {
+                    return Err(JournalError::Invariant("commit unit outside resource"));
+                }
+                let added = txn.insert_range(unit.job_id, unit.range, unit.epoch)?;
+                if let Some(crc32c) = unit.crc32c {
+                    txn.put_unit_crc(&crate::records::UnitCrcRow {
+                        job_id: unit.job_id,
+                        offset: unit.range.start,
+                        length: unit
+                            .range
+                            .len()
+                            .try_into()
+                            .map_err(|_| JournalError::Invariant("commit unit too large"))?,
+                        crc32c,
+                    })?;
+                }
+                let ranges = txn.ranges(unit.job_id)?;
+                record.job.progress.bytes_done = ranges.covered_bytes();
+                record.job.updated_at = now;
+                record.job.progress.updated_at = now;
+                if added > 0 {
+                    record.job.retry.last_progress_at = Some(now);
+                    record.job.retry.recovery_count = 0;
+                    if added >= zeus_types::policy::budgets::PROGRESS_RESET_BYTES {
+                        record.job.retry.consecutive_failures = 0;
+                        record.internal.retry_counts.clear();
+                        record.internal.retry_no_progress_since = None;
+                    }
+                }
+                if record
+                    .internal
+                    .total_bytes
+                    .or(record.internal.eof_size)
+                    .is_some_and(|n| ranges.is_complete(n))
+                {
+                    record.internal.data_complete = true;
+                    record.job.state = JobState::Verifying;
+                    record.job.state_since = now;
+                    record.job.progress.rate_ewma = 0;
+                    record.job.progress.segments_active = 0;
+                    let state_event = txn.append_event(
+                        now,
+                        Some(unit.job_id),
+                        record.job.spec.source.run_id,
+                        zeus_types::event::JobStateChangedData {
+                            from: JobState::Downloading,
+                            to: JobState::Verifying,
+                            transition: zeus_types::state::TransitionId::new("S20")?,
+                            cause: StateCause::AllCommitted,
+                            actor: Actor::engine(),
+                        }
+                        .into(),
+                    )?;
+                    record.internal.last_state_seq = state_event
+                        .seq
+                        .ok_or(JournalError::Invariant("journal event lacks sequence"))?
+                        .get();
+                    crate::fault::check(
+                        self.faults.as_ref(),
+                        crate::fault::CrashPoint::DuringCompletionTransaction,
+                    )?;
+                    outcome.completed.push(unit.job_id);
+                }
+                txn.put_job(&record)?;
+                outcome.acknowledged.push(*unit);
+            }
+            crate::fault::check(self.faults.as_ref(), crate::fault::CrashPoint::DuringCommit)?;
+            Ok(outcome)
+        })?;
+        crate::fault::check(
+            self.faults.as_ref(),
+            crate::fault::CrashPoint::AfterCommitBeforeAck,
+        )?;
+        Ok(outcome)
     }
 
     /// Applies one transition of the state-machine table atomically: validates it with
@@ -230,7 +356,7 @@ impl Journal {
         request: TransitionRequest,
         update: &mut dyn FnMut(&mut JobRecord) -> JournalResult<()>,
     ) -> JournalResult<TransitionOutcome> {
-        Err(JournalError::NotImplemented("Journal::apply_transition"))
+        self.transact(|txn| transition(txn, request, update, false))
     }
 
     /// Restart from zero (03 section 7.6), one transaction: remove every range and unit checksum of the
@@ -245,7 +371,34 @@ impl Journal {
         now: Timestamp,
         update: &mut dyn FnMut(&mut JobRecord) -> JournalResult<()>,
     ) -> JournalResult<u64> {
-        Err(JournalError::NotImplemented("Journal::invalidate_all"))
+        let dropped = self.transact(|txn| {
+            let mut record = txn
+                .job(job)?
+                .ok_or(JournalError::NotFound { what: "job" })?;
+            let dropped = txn.remove_ranges(job, None)?;
+            txn.remove_unit_crcs(job)?;
+            txn.put_invalidation(&crate::records::InvalidationRow {
+                job_id: job,
+                at: now,
+                epoch: record.internal.epoch,
+                reason,
+                dropped_bytes: dropped,
+            })?;
+            record.internal.verify_result = None;
+            record.internal.data_complete = false;
+            record.internal.eof_size = None;
+            record.job.progress.bytes_done = 0;
+            record.job.updated_at = now;
+            record.job.progress.updated_at = now;
+            update(&mut record)?;
+            txn.put_job(&record)?;
+            Ok(dropped)
+        })?;
+        crate::fault::check(
+            self.faults.as_ref(),
+            crate::fault::CrashPoint::RestartJournalClearedFileNot,
+        )?;
+        Ok(dropped)
     }
 
     /// Removes the part `range` of a job's committed set (recovery checks L3 and L4) with an
@@ -257,7 +410,26 @@ impl Journal {
         reason: InvalidationReason,
         now: Timestamp,
     ) -> JournalResult<u64> {
-        Err(JournalError::NotImplemented("Journal::invalidate_range"))
+        self.transact(|txn| {
+            let mut record = txn
+                .job(job)?
+                .ok_or(JournalError::NotFound { what: "job" })?;
+            let dropped = txn.remove_ranges(job, Some(range))?;
+            txn.put_invalidation(&crate::records::InvalidationRow {
+                job_id: job,
+                at: now,
+                epoch: record.internal.epoch,
+                reason,
+                dropped_bytes: dropped,
+            })?;
+            record.internal.verify_result = None;
+            record.internal.data_complete = false;
+            record.job.progress.bytes_done = txn.ranges(job)?.covered_bytes();
+            record.job.updated_at = now;
+            record.job.progress.updated_at = now;
+            txn.put_job(&record)?;
+            Ok(dropped)
+        })
     }
 
     /// The point of no return (step F6, transition S80): in one transaction set `completed`, store the
@@ -268,8 +440,141 @@ impl Journal {
         request: TransitionRequest,
         update: &mut dyn FnMut(&mut JobRecord) -> JournalResult<()>,
     ) -> JournalResult<TransitionOutcome> {
-        Err(JournalError::NotImplemented("Journal::finish_job"))
+        if request.transition != "S80" {
+            return Err(JournalError::Invariant("finish requires S80"));
+        }
+        crate::fault::check(
+            self.faults.as_ref(),
+            crate::fault::CrashPoint::BeforeCompletionCommit,
+        )?;
+        let outcome = self.transact(|txn| transition(txn, request, update, true))?;
+        crate::fault::check(
+            self.faults.as_ref(),
+            crate::fault::CrashPoint::AfterCompletionBeforeOutbox,
+        )?;
+        Ok(outcome)
     }
+}
+
+/// Applies a validated state transition inside a caller-owned transaction.
+/// Used when policy changes must atomically update several jobs and grants.
+pub fn apply_transition_in(
+    txn: &mut dyn WriteTxn,
+    request: TransitionRequest,
+    update: &mut dyn FnMut(&mut JobRecord) -> JournalResult<()>,
+) -> JournalResult<TransitionOutcome> {
+    transition(txn, request, update, false)
+}
+
+fn transition(
+    txn: &mut dyn WriteTxn,
+    request: TransitionRequest,
+    update: &mut dyn FnMut(&mut JobRecord) -> JournalResult<()>,
+    finish: bool,
+) -> JournalResult<TransitionOutcome> {
+    let mut record = txn
+        .job(request.job_id)?
+        .ok_or(JournalError::NotFound { what: "job" })?;
+    let from = record.job.state;
+    let (to, def) = zeus_types::state::apply(Some(from), request.transition, request.trigger)
+        .map_err(|_| JournalError::Invariant("illegal state transition"))?;
+    if !def.causes.contains(&request.cause)
+        && !(request.cause == zeus_types::StateCause::WorkflowRunner
+            && request.trigger == zeus_types::TransitionActor::Client
+            && request.actor.kind == zeus_types::ActorKind::System)
+    {
+        return Err(JournalError::Invariant("invalid transition cause"));
+    }
+    update(&mut record)?;
+    record.job.state = to;
+    record.job.state_since = request.now;
+    record.job.updated_at = request.now;
+    if to == JobState::Probing {
+        record.internal.epoch = record
+            .internal
+            .epoch
+            .checked_add(1)
+            .ok_or(JournalError::Invariant("epoch exhausted"))?;
+    }
+    if to != JobState::RetryScheduled {
+        record.job.retry.next_attempt_at = None;
+    }
+    if !matches!(to, JobState::Downloading | JobState::Verifying) {
+        record.job.progress.rate_ewma = 0;
+        record.job.progress.eta_s = None;
+        record.job.progress.segments_active = 0;
+    }
+    if finish {
+        if record.job.result.is_none() {
+            return Err(JournalError::Invariant(
+                "completion requires verified result",
+            ));
+        }
+        record.internal.finalize = None;
+        txn.remove_ranges(record.id(), None)?;
+        txn.remove_unit_crcs(record.id())?;
+        for r in txn.reservations()? {
+            if r.job_id == record.id() {
+                txn.remove_reservation(&r.path_key)?;
+            }
+        }
+    }
+    record.job.check_invariants()?;
+    let mut payloads = request.events_before;
+    payloads.push(
+        zeus_types::event::JobStateChangedData {
+            from,
+            to,
+            transition: zeus_types::state::TransitionId::new(request.transition)?,
+            cause: request.cause,
+            actor: request.actor,
+        }
+        .into(),
+    );
+    payloads.extend(request.events_after);
+    // Optional rows (for example throttling) may be absent; supplied events must preserve table order.
+    let mut position = 0;
+    for payload in &payloads {
+        let kind = payload
+            .kind()
+            .ok_or(JournalError::Invariant("unknown transition event"))?;
+        let offset = def.events[position..]
+            .iter()
+            .position(|k| *k == kind)
+            .ok_or(JournalError::Invariant(
+                "transition event order differs from specification",
+            ))?;
+        position += offset + 1;
+    }
+    let mut events = Vec::new();
+    for payload in payloads {
+        let event = txn.append_event(
+            request.now,
+            Some(record.id()),
+            record.job.spec.source.run_id,
+            payload,
+        )?;
+        if event.payload.kind() == Some(zeus_types::EventKind::JobStateChanged) {
+            record.internal.last_state_seq = event
+                .seq
+                .ok_or(JournalError::Invariant("journal event lacks sequence"))?
+                .get();
+        }
+        events.push(event);
+    }
+    if to.is_terminal() {
+        for mut grant in txn.grants()? {
+            if grant.scope == zeus_types::GrantScope::Once
+                && grant.state == zeus_types::GrantState::Active
+                && grant.job_id == Some(record.id())
+            {
+                grant.state = zeus_types::GrantState::Consumed;
+                txn.put_grant(&grant)?;
+            }
+        }
+    }
+    txn.put_job(&record)?;
+    Ok(TransitionOutcome { record, events })
 }
 
 #[cfg(test)]

@@ -1051,6 +1051,11 @@ pub struct DecideUi {
 pub struct ApprovalDecideBody {
     /// The approval.
     pub approval_id: ApprovalId,
+    /// BLAKE3 of the exact facts displayed to the human.
+    pub request_hash: zeus_types::Hex256,
+    /// Confirmation strength used by the trust surface.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmation: Option<ConfirmationLevel>,
     /// Approve or deny.
     pub decision: Decision,
     /// The scope chosen (must be in `allowed_scopes` for approve; may be `never` or absent for deny).
@@ -1058,6 +1063,55 @@ pub struct ApprovalDecideBody {
     pub scope: Option<GrantScope>,
     /// The attestation.
     pub ui: DecideUi,
+}
+
+/// Human confirmation strength, ordered by policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfirmationLevel {
+    /// Click or key press after the mandatory display delay.
+    Gesture,
+    /// Typed binding code.
+    TypedCode,
+    /// Operating-system user verification.
+    OsAuth,
+}
+/// Native kill-switch action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KillSwitchAction {
+    /// Stop agent work and revoke grants.
+    Engage,
+    /// Re-enable admission after a human review.
+    Release,
+}
+/// `kill_switch` from a trusted extension surface.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KillSwitchBody {
+    /// Requested action.
+    pub action: KillSwitchAction,
+    /// Human gesture evidence.
+    pub ui: DecideUi,
+    /// Optional human explanation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+/// `kill_switch.response` after the durable sweep.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KillSwitchResponseBody {
+    /// Current latch state.
+    pub engaged: bool,
+    /// Whether the latch changed.
+    pub changed: bool,
+    /// Grants revoked.
+    pub grants_revoked: u64,
+    /// Jobs paused.
+    pub jobs_paused: u64,
+    /// Pending approvals.
+    pub approvals_pending: u64,
+    /// Whether this response is an idempotent replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replayed: Option<bool>,
 }
 
 /// `approval.decide.response`.
@@ -1287,6 +1341,7 @@ body_enum! {
         FetchEnd(FetchEndBody) = "fetch.end", request: false;
         FetchError(FetchErrorBody) = "fetch.error", request: false;
         ApprovalList(ApprovalListBody) = "approval.list", request: true;
+        KillSwitch(KillSwitchBody) = "kill_switch", request: true;
         ApprovalDecide(ApprovalDecideBody) = "approval.decide", request: true;
         EventsSubscribe(EventsSubscribeBody) = "events.subscribe", request: true;
         EventsUnsubscribe(EventsUnsubscribeBody) = "events.unsubscribe", request: false;
@@ -1314,6 +1369,7 @@ body_enum! {
         FetchCancel(FetchCancelBody) = "fetch.cancel", request: false;
         ApprovalListResponse(ApprovalListResponseBody) = "approval.list.response", request: false;
         ApprovalPending(ApprovalPendingBody) = "approval.pending", request: false;
+        KillSwitchResponse(KillSwitchResponseBody) = "kill_switch.response", request: false;
         ApprovalDecideResponse(ApprovalDecideResponseBody) = "approval.decide.response", request: false;
         EventsSubscribeResponse(EventsSubscribeResponseBody) = "events.subscribe.response", request: false;
         JobEvent(JobEventBody) = "job.event", request: false;
@@ -1563,8 +1619,8 @@ mod tests {
 
     #[test]
     fn catalogue_sizes_match_the_schema_unions() {
-        assert_eq!(ExtensionBody::TYPES.len(), 21);
-        assert_eq!(DaemonBody::TYPES.len(), 21);
+        assert_eq!(ExtensionBody::TYPES.len(), 22);
+        assert_eq!(DaemonBody::TYPES.len(), 22);
     }
 
     #[test]

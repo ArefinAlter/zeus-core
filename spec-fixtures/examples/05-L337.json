@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"method":"daemon.authenticate","params":{"credential_id":"cli_01M2YW3JB9C3D5F7G1H3J5K7M9","proof":"0b6d2f8e4a1c7e3b9d5f0a2c4e6b8d1f3a5c7e9b0d2f4a6c8e0b1d3f5a7c9e1b","attach":{"browser":"chrome","attested_extension":"abcdefghijklmnopabcdefghijklmnop","host_version":"0.1.0","parent_verified":true}}}

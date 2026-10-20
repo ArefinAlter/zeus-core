@@ -1,0 +1,8 @@
+{
+  "jobs": [
+    { "job_id": "job_01M48AKWBAB0G0FE7030CY82SR", "state": "downloading", "bytes_done": 734003200, "bytes_total": 2147483648, "rate_ewma": 20971520, "eta_s": 67, "quarantined": false }
+  ],
+  "timed_out": true,
+  "all_settled": false,
+  "cursor": "ev_48702"
+}

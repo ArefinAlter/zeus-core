@@ -4,15 +4,11 @@
 //! A quarantined file is still placed at its final path; the flag is exposed in every API and event;
 //! Zeus never opens, executes or converts it automatically, and any Zeus operation that opens,
 //! converts, moves out of its directory or deletes it needs an approval.
-#![expect(
-    unused_variables,
-    reason = "skeleton: evaluate is filled in by the zeus-verify implementation task"
-)]
 
 use zeus_types::{Origin, QuarantineReason};
 
 use crate::content::{ContentVerdict, DetectedType};
-use crate::error::{VerifyError, VerifyResult};
+use crate::error::VerifyResult;
 
 /// Optional rules and trust lists (configuration).
 #[derive(Debug, Clone, Default)]
@@ -49,7 +45,44 @@ pub fn evaluate(
     input: &QuarantineInput<'_>,
     policy: &QuarantinePolicy,
 ) -> VerifyResult<Vec<QuarantineReason>> {
-    Err(VerifyError::NotImplemented("quarantine::evaluate"))
+    let mut reasons = Vec::new();
+    let extension = input
+        .file_name
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if has_executable_extension(input.file_name)
+        || ["docm", "dotm", "xlsm", "xltm", "pptm", "potm"].contains(&extension.as_str())
+        || (input.verdict == ContentVerdict::DangerousType
+            && !input.detected.is_some_and(|d| d.mime == "text/html"))
+    {
+        reasons.push(QuarantineReason::ExecutableType);
+    }
+    if matches!(
+        input.verdict,
+        ContentVerdict::Mismatch | ContentVerdict::DangerousType
+    ) {
+        reasons.push(QuarantineReason::MimeMismatch);
+    }
+    if input.detected.is_some_and(|d| d.mime == "text/html")
+        && !["html", "htm"].contains(&extension.as_str())
+    {
+        reasons.push(QuarantineReason::HtmlDisguised);
+    }
+    if input.av_flagged {
+        reasons.push(QuarantineReason::AvFlagged);
+    }
+    if policy.quarantine_untrusted
+        && input
+            .origin
+            .is_none_or(|o| !policy.trusted_origins.contains(o))
+    {
+        reasons.push(QuarantineReason::UntrustedOrigin);
+    }
+    if policy.quarantine_session_files && input.session_derived {
+        reasons.push(QuarantineReason::SessionDerived);
+    }
+    Ok(reasons)
 }
 
 /// Extensions that identify executable, script, installer or shortcut files regardless of content

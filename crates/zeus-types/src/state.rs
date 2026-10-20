@@ -228,6 +228,8 @@ pub enum StateCause {
     Recovered,
     /// Startup recovery gave up (crash loop).
     CrashLoop,
+    /// A workflow runner changed the job lifecycle.
+    WorkflowRunner,
 }
 
 /// A transition identifier `S<nn>`, validated against the table.
@@ -591,8 +593,8 @@ pub const TRANSITIONS: &[TransitionDef] = &[
         Canceled,
         "cancel",
         [Client],
-        "The pending approval is withdrawn (decision canceled, actor system).",
-        [E::ApprovalDecided, E::JobStateChanged],
+        "The pending approval is withdrawn (decision canceled, actor system). When other jobs share the approval (07 section 4.7) the job leaves it instead and emits approval.requested. Exhausted revisions withdraw the old binding before requesting a fresh binding for the remaining jobs.",
+        [E::ApprovalDecided, E::ApprovalRequested, E::JobStateChanged],
         [C::UserRequest]
     ),
     row!(

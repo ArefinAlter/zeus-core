@@ -1,0 +1,8 @@
+{
+  "pid": 18422,
+  "instance_id": "3f9a6c2d1b7e4a08c5d2e9f1a0b3c4d5",
+  "version": "0.1.0",
+  "protocol_versions": [1],
+  "endpoint": "\\\\.\\pipe\\zeusd-3f7430550b129ac6",
+  "started_at": "2026-10-05T08:55:02.000Z"
+}

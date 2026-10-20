@@ -111,6 +111,10 @@ pub enum TransportFailure {
     TlsCertificate,
     /// Another TLS handshake failure, or a reset during the handshake.
     TlsHandshake,
+    /// A trusted transport rejected a malformed frame or impossible response.
+    ProtocolViolation,
+    /// A trusted scoped transport refused network authority or destination policy.
+    PolicyDenied,
     /// Anything else; classified as `transient_network` with the generic code.
     Other,
 }

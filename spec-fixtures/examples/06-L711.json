@@ -1,0 +1,5 @@
+{
+  "urls": ["https://files.example.com/exports/2026/q3.csv.gz"],
+  "expected_sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a",
+  "idempotency_key": "7d0c6f3e-5d1b-4f7a-9a42-0b6f2f1f6a10"
+}

@@ -9,16 +9,11 @@
 //!
 //! This module provides the typed record, the pure chain functions (genesis, record hash, chain
 //! verification over parsed records, verified against the published test vectors of 04 section 4.7),
-//! an in-memory chain writer for tests, and the API of the file-backed log whose rotation, fsync
-//! policy, torn-tail recovery and anchors are filled in by the implementation task.
+//! an in-memory chain writer for tests and a durable file-backed writer with rotation,
+//! partial-tail recovery and anchor verification.
 //!
 //! The chain proves consistency, not authorship: an attacker who can write the log can recompute every
 //! hash (04 section 5). Keyed mode (a BLAKE3 key from the OS keyring) and external anchors narrow that.
-#![expect(
-    unused_variables,
-    dead_code,
-    reason = "skeleton: AuditLog and verify_dir are filled in by the zeus-verify implementation task"
-)]
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -425,7 +420,7 @@ impl AuditSink for MemoryAuditLog {
     }
 }
 
-// ------------------------------------------------------------------ file-backed log (to implement)
+// ------------------------------------------------------------------ file-backed log
 
 /// Options of the file-backed log.
 #[derive(Debug, Clone)]
@@ -464,9 +459,78 @@ impl Default for AuditOptions {
 pub struct AuditLog {
     dir: PathBuf,
     options: AuditOptions,
+    state: Mutex<DiskState>,
+    _lock: std::fs::File,
+    store_id: StoreId,
+}
+
+#[derive(Debug)]
+struct DiskState {
+    file: std::fs::File,
+    index: u64,
+    head: AuditHead,
+    date: String,
+    bytes: u64,
+    poisoned: bool,
 }
 
 impl AuditLog {
+    /// Visit complete records while appends and rotation are excluded. The visitor must not call
+    /// back into this log. Each line is bounded; callers decide what metadata to retain.
+    pub fn visit_records(
+        &self,
+        mut visit: impl FnMut(&AuditRecord) -> VerifyResult<()>,
+    ) -> VerifyResult<AuditHead> {
+        use std::io::{BufRead, BufReader, Read};
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| VerifyError::AuditUnavailable("audit lock poisoned".into()))?;
+        for (_, path) in audit_files(&self.dir)? {
+            let mut reader = BufReader::new(std::fs::File::open(path)?);
+            loop {
+                let mut bytes = Vec::new();
+                let n = reader.by_ref().take(65537).read_until(b'\n', &mut bytes)?;
+                if n == 0 {
+                    break;
+                }
+                if n > 65536 || bytes.last() != Some(&b'\n') {
+                    return Err(AuditFailure::of(AuditFailureKind::TornOrMalformed).into());
+                }
+                let record: AuditRecord = serde_json::from_slice(&bytes)?;
+                visit(&record)?;
+            }
+        }
+        Ok(state.head.clone())
+    }
+
+    /// Return the newest `limit` records after a cursor and their consistent chain head.
+    pub fn tail(&self, after: u64, limit: usize) -> VerifyResult<(Vec<AuditRecord>, AuditHead)> {
+        if !(1..=100).contains(&limit) {
+            return Err(VerifyError::Invalid("audit tail limit must be 1 to 100"));
+        }
+        let mut records = std::collections::VecDeque::new();
+        let head = self.visit_records(|record| {
+            if record.seq > after {
+                records.push_back(record.clone());
+                if records.len() > limit {
+                    records.pop_front();
+                }
+            }
+            Ok(())
+        })?;
+        Ok((records.into_iter().collect(), head))
+    }
+
+    /// Verify a consistent disk snapshot while appends and rotation are excluded.
+    pub fn verify_snapshot(&self, options: &VerifyOptions) -> VerifyResult<VerifyReport> {
+        let _state = self
+            .state
+            .lock()
+            .map_err(|_| VerifyError::AuditUnavailable("audit lock poisoned".into()))?;
+        verify_dir(&self.dir, options)
+    }
+
     /// Opens (or creates, writing the genesis record) the log in `dir`, recovering a torn tail
     /// (`audit.recovered`) and taking the directory lock.
     pub fn open(
@@ -476,17 +540,173 @@ impl AuditLog {
         zeus_version: &str,
         options: AuditOptions,
     ) -> VerifyResult<Self> {
-        Err(VerifyError::NotImplemented("AuditLog::open"))
+        use std::io::Write;
+        std::fs::create_dir_all(dir)?;
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(dir.join("audit.lock"))?;
+        lock.try_lock()
+            .map_err(|_| VerifyError::AuditUnavailable("audit directory already locked".into()))?;
+        let files = audit_files(dir)?;
+        let mut recovered = None;
+        if let Some((_, path)) = files.last() {
+            let bytes = std::fs::read(path)?;
+            if !bytes.is_empty() && !bytes.ends_with(b"\n") {
+                let valid = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+                let name = format!(
+                    "{}.torn-{}",
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                    zeus_types::IdGenerator::new().next_ulid()
+                );
+                let mut quarantine = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(dir.join(&name))?;
+                quarantine.write_all(&bytes[valid..])?;
+                quarantine.sync_all()?;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(path)?
+                    .set_len(valid as u64)?;
+                recovered = Some((bytes.len() - valid, name));
+            }
+        }
+        let now = Timestamp::now();
+        let (index, head) = if files.is_empty() {
+            let index = 1;
+            let id = chain_id.unwrap_or_else(|| zeus_types::IdGenerator::new().chain_id());
+            let initial = MemoryAuditLog::new(id, store_id, zeus_version, now, options.key);
+            let values = initial.to_values();
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(dir.join(format!("audit-{index:08}.jsonl")))?;
+            let mut bytes = to_jcs_bytes(&values[0])?;
+            bytes.push(b'\n');
+            file.write_all(&bytes)?;
+            file.sync_all()?;
+            (
+                index,
+                initial
+                    .head()?
+                    .ok_or(VerifyError::Invalid("missing audit genesis"))?,
+            )
+        } else {
+            let report = verify_dir(
+                dir,
+                &VerifyOptions {
+                    key: options.key,
+                    ..VerifyOptions::default()
+                },
+            )?;
+            let head = report
+                .head
+                .ok_or(VerifyError::Invalid("audit contains no genesis"))?;
+            if chain_id.is_some_and(|id| id != head.chain_id) {
+                return Err(AuditFailure::of(AuditFailureKind::AnchorMismatch).into());
+            }
+            (files.last().map_or(1, |f| f.0), head)
+        };
+        let path = dir.join(format!("audit-{index:08}.jsonl"));
+        let file = std::fs::OpenOptions::new().append(true).open(path)?;
+        let bytes = file.metadata()?.len();
+        let log = Self {
+            dir: dir.to_path_buf(),
+            options,
+            state: Mutex::new(DiskState {
+                file,
+                index,
+                head,
+                date: now.to_rfc3339()[..10].into(),
+                bytes,
+                poisoned: false,
+            }),
+            _lock: lock,
+            store_id,
+        };
+        if let Some((discarded, name)) = recovered {
+            let mut entry =
+                AuditEntry::new(now, Actor::system(), actions::RECOVERED, AuditOutcome::Ok);
+            entry
+                .data
+                .insert("discarded_bytes".into(), Value::from(discarded as u64));
+            entry
+                .data
+                .insert("quarantine_file".into(), Value::String(name));
+            log.append(entry)?;
+        }
+        Ok(log)
     }
 }
 
 impl AuditSink for AuditLog {
     fn append(&self, entry: AuditEntry) -> VerifyResult<AuditRecord> {
-        Err(VerifyError::NotImplemented("AuditLog::append"))
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| VerifyError::AuditUnavailable("audit lock poisoned".into()))?;
+        if state.poisoned {
+            return Err(VerifyError::AuditUnavailable(
+                "previous append failed; reopen and recover the log".into(),
+            ));
+        }
+        let date = entry.ts.to_rfc3339()[..10].to_owned();
+        if state.bytes >= self.options.rotate_bytes.max(1024) || date != state.date {
+            let mut checkpoint = AuditEntry::new(
+                entry.ts,
+                Actor::system(),
+                actions::CHECKPOINT,
+                AuditOutcome::Ok,
+            );
+            checkpoint
+                .data
+                .insert("covered_seq".into(), Value::from(state.head.seq));
+            checkpoint
+                .data
+                .insert("journal_last_event_seq".into(), Value::from(0));
+            checkpoint
+                .data
+                .insert("store_id".into(), Value::String(self.store_id.to_string()));
+            disk_append(&mut state, checkpoint, self.options.key.as_ref())?;
+            let next = state
+                .index
+                .checked_add(1)
+                .ok_or(VerifyError::Invalid("audit file index exhausted"))?;
+            let next_name = format!("audit-{next:08}.jsonl");
+            let mut rotated = AuditEntry::new(
+                entry.ts,
+                Actor::system(),
+                actions::ROTATED,
+                AuditOutcome::Ok,
+            );
+            rotated
+                .data
+                .insert("next_file".into(), Value::String(next_name.clone()));
+            disk_append(&mut state, rotated, self.options.key.as_ref())?;
+            let file = std::fs::OpenOptions::new()
+                .append(true)
+                .create_new(true)
+                .open(self.dir.join(next_name))?;
+            file.sync_all()?;
+            state.file = file;
+            state.index = next;
+            state.bytes = 0;
+            state.date = date;
+        }
+        disk_append(&mut state, entry, self.options.key.as_ref())
     }
 
     fn head(&self) -> VerifyResult<Option<AuditHead>> {
-        Err(VerifyError::NotImplemented("AuditLog::head"))
+        Ok(Some(
+            self.state
+                .lock()
+                .map_err(|_| VerifyError::AuditUnavailable("audit lock poisoned".into()))?
+                .head
+                .clone(),
+        ))
     }
 }
 
@@ -515,7 +735,157 @@ pub struct VerifyReport {
 /// Verifies every `audit-*.jsonl` file in `dir` in index order: per-record checks, rotation
 /// continuity, the anchor and the journal head (04 section 4.5).
 pub fn verify_dir(dir: &Path, options: &VerifyOptions) -> VerifyResult<VerifyReport> {
-    Err(VerifyError::NotImplemented("verify_dir"))
+    let files = audit_files(dir)?;
+    let disk_anchor = if dir.join("anchor.json").try_exists()? {
+        Some(serde_json::from_slice::<AuditHead>(&std::fs::read(
+            dir.join("anchor.json"),
+        )?)?)
+    } else {
+        None
+    };
+    let mut start = disk_anchor
+        .clone()
+        .map_or(ChainStart::Genesis, ChainStart::After);
+    let mut count = 0;
+    let mut head = disk_anchor;
+    let mut anchors = std::collections::BTreeMap::new();
+    if let Some(h) = &head {
+        anchors.insert(h.seq, h.clone());
+    }
+    let mut previous_index = None;
+    let mut next_expected: Option<String> = None;
+    for (position, (index, path)) in files.iter().enumerate() {
+        if previous_index.is_some_and(|i| *index != i + 1) {
+            return Err(AuditFailure::of(AuditFailureKind::MissingFile).into());
+        }
+        if next_expected
+            .as_ref()
+            .is_some_and(|n| path.file_name().unwrap_or_default() != std::ffi::OsStr::new(n))
+        {
+            return Err(AuditFailure::of(AuditFailureKind::Rotation).into());
+        }
+        let bytes = std::fs::read(path)?;
+        if !bytes.is_empty() && !bytes.ends_with(b"\n") {
+            return Err(AuditFailure::of(AuditFailureKind::TornOrMalformed).into());
+        }
+        let text = std::str::from_utf8(&bytes)
+            .map_err(|_| AuditFailure::of(AuditFailureKind::TornOrMalformed))?;
+        let mut last = None;
+        for (line, text) in text.lines().enumerate() {
+            let value = crate::canonical::parse_hashable(text).map_err(|_| AuditFailure {
+                kind: AuditFailureKind::TornOrMalformed,
+                seq: None,
+                file: Some(
+                    path.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                line: Some(line as u64 + 1),
+            })?;
+            let h = verify_records(std::slice::from_ref(&value), &start, options.key.as_ref())?
+                .ok_or(VerifyError::Invalid("empty audit record"))?;
+            anchors.insert(h.seq, h.clone());
+            start = ChainStart::After(h.clone());
+            head = Some(h);
+            count += 1;
+            last = Some(value);
+        }
+        if position + 1 < files.len() {
+            let last = last.ok_or_else(|| AuditFailure::of(AuditFailureKind::Rotation))?;
+            if last["action"] != actions::ROTATED {
+                return Err(AuditFailure::of(AuditFailureKind::Rotation).into());
+            }
+            next_expected = last["data"]["next_file"].as_str().map(str::to_owned);
+            if next_expected.is_none() {
+                return Err(AuditFailure::of(AuditFailureKind::Rotation).into());
+            }
+        }
+        previous_index = Some(*index);
+    }
+    for anchor in [options.anchor.as_ref(), options.journal_head.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        if head.as_ref().is_none_or(|h| h.seq < anchor.seq) {
+            return Err(AuditFailure::at(AuditFailureKind::TailTruncated, anchor.seq).into());
+        }
+        if anchors.get(&anchor.seq) != Some(anchor) {
+            return Err(AuditFailure::at(AuditFailureKind::AnchorMismatch, anchor.seq).into());
+        }
+    }
+    Ok(VerifyReport {
+        records: count,
+        head,
+        warnings: Vec::new(),
+    })
+}
+
+fn audit_files(dir: &Path) -> VerifyResult<Vec<(u64, PathBuf)>> {
+    let mut files = Vec::new();
+    if !dir.try_exists()? {
+        return Ok(files);
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if let Some(index) = name
+            .strip_prefix("audit-")
+            .and_then(|n| n.strip_suffix(".jsonl"))
+            .and_then(|n| n.parse::<u64>().ok())
+        {
+            if !entry.file_type()?.is_file() {
+                return Err(VerifyError::Invalid("audit entry is not a regular file"));
+            }
+            files.push((index, entry.path()));
+        }
+    }
+    files.sort_by_key(|f| f.0);
+    Ok(files)
+}
+
+fn disk_append(
+    state: &mut DiskState,
+    entry: AuditEntry,
+    key: Option<&[u8; 32]>,
+) -> VerifyResult<AuditRecord> {
+    use std::io::Write;
+    if serde_json::to_vec(&entry.data)?.len() > 32 << 10 {
+        return Err(VerifyError::Invalid("audit data exceeds 32 KiB"));
+    }
+    let previous = state.head.hash;
+    let mut record = AuditRecord {
+        v: 1,
+        seq: state
+            .head
+            .seq
+            .checked_add(1)
+            .ok_or(VerifyError::Invalid("audit sequence exhausted"))?,
+        ts: entry.ts,
+        actor: entry.actor,
+        action: entry.action,
+        subject: entry.subject,
+        outcome: entry.outcome,
+        data: entry.data,
+        prev_hash: previous,
+        hash: previous,
+    };
+    record.hash = record_hash(&previous, &serde_json::to_value(&record)?, key)?;
+    let mut line = to_jcs_bytes(&record)?;
+    line.push(b'\n');
+    // Synchronous persistence is deliberately stronger than the optional batching policy.
+    if let Err(e) = state
+        .file
+        .write_all(&line)
+        .and_then(|_| state.file.sync_all())
+    {
+        state.poisoned = true;
+        return Err(VerifyError::AuditUnavailable(e.to_string()));
+    }
+    state.bytes += line.len() as u64;
+    state.head.seq = record.seq;
+    state.head.hash = record.hash;
+    Ok(record)
 }
 
 #[cfg(test)]

@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"error":{"code":-32007,"message":"No protocol version in common.","data":{"code":"api.version_unsupported","class":"unsupported","message":"No protocol version in common.","retryable":false,"details":{"supported":[1]}}}}

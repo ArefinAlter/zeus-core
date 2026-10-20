@@ -1,0 +1,18 @@
+{
+  "resultType": "complete",
+  "content": [
+    {
+      "type": "text",
+      "text": "policy.too_many_pending: 10 of your requests are already waiting for the user. Next: ask_user."
+    }
+  ],
+  "structuredContent": {
+    "code": "policy.too_many_pending",
+    "class": "unavailable",
+    "message": "10 of your requests are already waiting for the user.",
+    "retryable": true,
+    "details": { "scope": "requester", "limit": 10 },
+    "next": { "action": "ask_user" }
+  },
+  "isError": true
+}

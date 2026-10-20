@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"method":"daemon.authenticate","params":{"credential_id":"cli_01M45KGHR0ED0WJDFXKG49029B","proof":"a7bf03456a5719e1733783d8945e63cda3e4ffde13bed92018d9f6c9499adcf2"}}

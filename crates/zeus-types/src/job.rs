@@ -786,6 +786,11 @@ impl Job {
     #[must_use]
     pub fn summary(&self) -> JobSummary {
         JobSummary {
+            state_seq: None,
+            rate_ewma: Some(self.progress.rate_ewma),
+            eta_s: self.progress.eta_s,
+            path: self.result.as_ref().map(|r| r.path.clone()),
+            sha256: self.result.as_ref().map(|r| r.sha256),
             id: self.id,
             state: self.state,
             quarantined: self.quarantined,
@@ -809,6 +814,21 @@ impl Job {
 /// Compact projection of [`Job`] for list views and the extension popup.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct JobSummary {
+    /// Durable event that placed the job in its current state, filled by the daemon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_seq: Option<crate::EventSeq>,
+    /// Current transfer rate in bytes per second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_ewma: Option<u64>,
+    /// Estimated seconds remaining.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta_s: Option<u64>,
+    /// Completed local file path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Completed SHA-256 digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<Hex256>,
     /// Identifier.
     pub id: JobId,
     /// Current state.

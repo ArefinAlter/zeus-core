@@ -1,0 +1,7 @@
+{
+  "approval_id": "ap_01M45NHJ3XS0QXG9T42HHN2YR8",
+  "request_hash": "09e8478513076b8b79ed19675402421a3cee9eb3d4c73487daa7bd63a55003ae",
+  "outcome": "deny",
+  "scope": "never",
+  "channel": "extension_popup"
+}

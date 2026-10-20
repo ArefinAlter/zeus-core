@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":31,"method":"daemon.kill_switch","params":{"action":"engage","surface":"tui","reason":"Agent behaving oddly; stop everything."}}

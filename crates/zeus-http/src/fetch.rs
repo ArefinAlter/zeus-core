@@ -9,12 +9,6 @@
 //! equal the bound validators; the body does not exceed the requested length. A violation aborts the
 //! request with `integrity.range_mismatch`, `integrity.resource_changed` or `integrity.range_overrun`;
 //! bytes already written for the failed response are never committed.
-#![expect(
-    unused_variables,
-    dead_code,
-    reason = "skeleton: HttpSegmentFetcher is filled in by the zeus-http implementation task"
-)]
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -116,7 +110,90 @@ impl SegmentFetcher for HttpSegmentFetcher {
         sink: &mut dyn Sink,
         cancel: &CancellationToken,
     ) -> HttpResult<SegmentOutcome> {
-        Err(HttpError::NotImplemented("HttpSegmentFetcher::fetch"))
+        use crate::response::{compare_validators, failure, send_following, validators, value};
+        use futures::StreamExt;
+        use zeus_types::codes;
+        let range = range_header(request.range).ok_or(HttpError::Invalid("empty segment"))?;
+        if request.chunk_bytes == 0 {
+            return Err(HttpError::Invalid("zero chunk size"));
+        }
+        let (mut response, _, _) = send_following(
+            &self.transport,
+            request.url,
+            &request.extra_headers,
+            request.session.as_ref(),
+            Some(&range),
+            request.bound_validators.if_range_value(),
+            request.head_timeout,
+            request.idle_timeout,
+            cancel,
+        )
+        .await?;
+        if response.status.as_u16() != 206 {
+            return Err(failure(
+                codes::INTEGRITY_RANGE_IGNORED,
+                "server ignored segment range",
+            ));
+        }
+        let cr = value(&response.headers, "content-range")
+            .ok_or(HttpError::Invalid("206 missing Content-Range"))?;
+        match crate::parse::parse_content_range(&cr)? {
+            crate::parse::ContentRange::Satisfied { range, total }
+                if range == request.range
+                    && (request.total_bytes.is_none() || total == request.total_bytes) => {}
+            _ => {
+                return Err(failure(
+                    codes::INTEGRITY_RANGE_MISMATCH,
+                    "segment Content-Range mismatch",
+                ));
+            }
+        }
+        let validators_seen = validators(&response.headers);
+        compare_validators(&request.bound_validators, &validators_seen)?;
+        let mut written = 0u64;
+        loop {
+            let next = tokio::select! { biased; _ = cancel.cancelled() => return Err(HttpError::Canceled), next = response.body.next() => next };
+            let Some(chunk) = next else {
+                break;
+            };
+            let chunk = chunk.map_err(|e| {
+                crate::classify::classify_transport(e.kind).envelope("segment body failed")
+            })?;
+            if written.saturating_add(chunk.len() as u64) > request.range.len() {
+                return Err(failure(
+                    codes::INTEGRITY_RANGE_OVERRUN,
+                    "segment body exceeds requested range",
+                ));
+            }
+            for part in chunk.chunks(request.chunk_bytes) {
+                if request.session.as_ref().is_some_and(|b| {
+                    b.material.issued_at.saturating_add_ms(b.material.ttl_ms)
+                        <= zeus_types::Timestamp::now()
+                }) {
+                    return Err(failure(
+                        codes::HTTP_FORBIDDEN_SESSION,
+                        "session lease expired during transfer",
+                    ));
+                }
+                if cancel.is_cancelled() {
+                    return Err(HttpError::Canceled);
+                }
+                // A writer may own a blocking disk operation: always join it before cancellation returns.
+                sink.write_at(request.range.start + written, Bytes::copy_from_slice(part))
+                    .await?;
+                written += part.len() as u64;
+            }
+        }
+        Ok(SegmentOutcome {
+            bytes_written: written,
+            status: 206,
+            end: if written == request.range.len() {
+                SegmentEnd::Complete
+            } else {
+                SegmentEnd::ServerClosedEarly
+            },
+            validators_seen,
+        })
     }
 }
 

@@ -30,3 +30,6 @@ pub use records::{
     VerifyResult,
 };
 pub use store::{JobFilter, JournalStore, ReadTxn, WriteTxn};
+
+/// Compose a job transition with other changes in one journal transaction.
+pub use journal::apply_transition_in;

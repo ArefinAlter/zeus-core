@@ -1,0 +1,15 @@
+{
+  "index": 0,
+  "url_redacted": "https://portal.example.org/library/reports?…",
+  "final_url_redacted": "https://portal.example.org/library/reports?…",
+  "outcome": "ok",
+  "status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "format": "html",
+  "fetched_at": "2026-10-06T08:02:11.412Z",
+  "bytes_total": 183544,
+  "truncated": false,
+  "simplified": true,
+  "requires_session": false,
+  "body": "<html><head><title>Reports 2026</title></head><body><span class=\"result-count\">1,240</span><table class=\"results\"><tbody><tr><td class=\"number\">TR-2026-0141</td><td class=\"title\">Corrosion Rates of Marine Alloys</td><td class=\"date\"><time datetime=\"2026-03-02\">2 Mar 2026</time></td><td class=\"file\"><a href=\"/files/reports/2026/TR-2026-0141.pdf\" data-bytes=\"2811904\">PDF</a></td></tr></tbody></table><a rel=\"next\" href=\"?year=2026&amp;page=2\">Next</a></body></html>"
+}

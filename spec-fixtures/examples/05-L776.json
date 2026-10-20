@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":20,"method":"events.subscribe","params":{"since_seq":48300,"job_ids":["job_01M45R71NCNH3W8EQ63TAFME4C"],"include_progress":true,"progress_interval_ms":2000}}

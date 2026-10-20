@@ -17,6 +17,7 @@
         "grant_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/GrantId" },
         "approval_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId" },
         "lease_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/SessionLeaseId" },
+        "artifact_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/ArtifactId" },
         "origin": { "$ref": "https://zeus.invalid/schema/common#/$defs/Origin" },
         "url_redacted": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
         "path": { "type": "string", "maxLength": 4096 }

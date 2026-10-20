@@ -33,3 +33,6 @@ pub use names::{
     unique_name,
 };
 pub use root::{SafeRoot, WriteRoots};
+
+#[cfg(windows)]
+mod sys;

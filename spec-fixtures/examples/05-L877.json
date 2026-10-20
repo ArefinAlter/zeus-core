@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":21,"method":"approvals.decide","params":{"approval_id":"ap_01M45R71NE2K4M6P8R0T2V4X6Z","request_hash":"4d08616bb08816bdf5644d82d3c54e3059e8e6aee78776931a61ccdb125a41fe","outcome":"approve","scope":"site","channel":"cli_interactive","confirmation":"typed_code"}}

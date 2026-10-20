@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeus.invalid/schema/artifact.v1",
+  "title": "Zeus artifact store v1",
+  "description": "Artifact records, content-addressed object references, import records and the store manifest of the zeus-core artifact store, shared by Zeus and Ogun (ADR 0011). Normative text: docs/spec/13-artifacts-and-content-store.md. Consumers MUST ignore unknown properties (00 section 4.1 rule 7).",
+  "$defs": {
+    "StoreId": {
+      "description": "Identifier of one artifact store instance: a bare ULID, written once in store.json. Distinct from the journal store id of 03.",
+      "$ref": "https://zeus.invalid/schema/common#/$defs/Ulid"
+    },
+    "ProductName": {
+      "description": "Lowercase name of a first-party product that owns stores and produces artifacts: zeus, ogun.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$"
+    },
+    "ObjectAlgorithm": {
+      "description": "Digest algorithm that names objects on disk. Version 1 of the store format has exactly one.",
+      "enum": ["blake3"]
+    },
+    "ObjectState": {
+      "description": "present: the object file is in objects/ and is served. absent: not stored by policy (record-only, evicted, collected). damaged: the store expected the object but found it missing, unreadable or not matching its digest; repair is needed.",
+      "enum": ["present", "absent", "damaged"]
+    },
+    "CasObjectRef": {
+      "description": "Reference to one content-addressed object and its state in the store that serves the reference. The store-relative path is derived: objects/<algorithm>/<digest[0..2]>/<digest[2..4]>/<digest>.",
+      "type": "object",
+      "required": ["algorithm", "digest", "size_bytes", "state"],
+      "properties": {
+        "algorithm": { "$ref": "#/$defs/ObjectAlgorithm" },
+        "digest": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "size_bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "state": { "$ref": "#/$defs/ObjectState" }
+      }
+    },
+    "StoreManifest": {
+      "description": "The file store.json at the store root. Written once at creation; changed only by a format migration.",
+      "type": "object",
+      "required": ["format", "format_version", "store_id", "created_at", "created_by", "object_algorithm", "fanout", "index"],
+      "properties": {
+        "format": { "const": "zeus-artifact-store" },
+        "format_version": { "const": 1 },
+        "store_id": { "$ref": "#/$defs/StoreId" },
+        "created_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "created_by": {
+          "type": "object",
+          "required": ["product", "version", "library"],
+          "properties": {
+            "product": { "$ref": "#/$defs/ProductName" },
+            "version": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" },
+            "library": { "type": "string", "maxLength": 64, "description": "Crate name and version of the store library, for example zeus-artifact 0.1.0." }
+          }
+        },
+        "object_algorithm": { "$ref": "#/$defs/ObjectAlgorithm" },
+        "fanout": {
+          "description": "Hex characters per directory level below objects/<algorithm>/.",
+          "const": [2, 2]
+        },
+        "index": {
+          "description": "Backend of the metadata index (index.redb).",
+          "enum": ["redb"]
+        }
+      }
+    },
+    "RemoteOrigin": {
+      "description": "The bytes were retrieved from a URL. Field rules are those of the 04 manifest source block.",
+      "type": "object",
+      "required": ["kind", "url", "final_url", "url_redacted", "session_origin"],
+      "properties": {
+        "kind": { "const": "remote" },
+        "url": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "final_url": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "url_redacted": { "type": "boolean", "description": "True when redaction removed or masked anything in url, final_url or referrer." },
+        "referrer": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" },
+        "session_origin": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Origin" }, { "type": "null" }] },
+        "http": { "$ref": "https://zeus.invalid/schema/provenance-manifest.v0#/$defs/FileRecord/properties/http" }
+      }
+    },
+    "DerivedOrigin": {
+      "description": "The bytes were produced by an operation from the parent artifacts.",
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "derived" }
+      }
+    },
+    "LocalOrigin": {
+      "description": "The bytes came from a local file the user or a client registered. No path is recorded.",
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "local" }
+      }
+    },
+    "ArtifactOrigin": {
+      "oneOf": [{ "$ref": "#/$defs/RemoteOrigin" }, { "$ref": "#/$defs/DerivedOrigin" }, { "$ref": "#/$defs/LocalOrigin" }]
+    },
+    "Producer": {
+      "description": "The product that first created the artifact. Preserved unchanged by imports.",
+      "type": "object",
+      "required": ["product", "version"],
+      "properties": {
+        "product": { "$ref": "#/$defs/ProductName" },
+        "version": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" },
+        "engine": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" },
+        "extension": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" },
+        "source_kind": {
+          "description": "Who asked, in the producer's vocabulary. For product zeus a SourceKind of 01 section 3.3.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$"
+        }
+      }
+    },
+    "Operation": {
+      "description": "The operation that produced the bytes.",
+      "type": "object",
+      "required": ["name", "version", "params_blake3"],
+      "properties": {
+        "name": {
+          "description": "<product>.<operation>, lowercase, dotted.",
+          "type": "string",
+          "maxLength": 96,
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+        },
+        "version": { "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer" },
+        "params_blake3": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "tool": {
+          "description": "External program that did the work, when there was one.",
+          "type": "object",
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "version": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        }
+      }
+    },
+    "ParentRef": {
+      "description": "One input of the producing operation, identified by content. artifact_id is local to the store that holds the referring record.",
+      "type": "object",
+      "required": ["artifact_id", "blake3", "sha256", "size_bytes", "role"],
+      "properties": {
+        "artifact_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/ArtifactId" }, { "type": "null" }] },
+        "blake3": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "size_bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "role": {
+          "description": "input (default), config, manifest, or a producer-defined role.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$"
+        }
+      }
+    },
+    "Verification": {
+      "type": "object",
+      "required": ["state", "checked_at", "basis"],
+      "properties": {
+        "state": {
+          "description": "verified: this product computed the digests from the content's bytes (ingest, finalization, import or scrub). unverified: digests taken from another party without recomputation. failed: the stored object no longer matches.",
+          "enum": ["verified", "unverified", "failed"]
+        },
+        "checked_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
+        "basis": {
+          "description": "Trust rung of the content identity: self (computed by the producer only), origin (also matched a digest the origin supplied), expected (also matched a digest the requester supplied).",
+          "enum": ["self", "origin", "expected"]
+        }
+      }
+    },
+    "Privacy": {
+      "description": "Reductions already applied to the provenance fields of this record (cumulative across exports).",
+      "type": "object",
+      "required": ["url_query", "session_origin_included"],
+      "properties": {
+        "url_query": { "enum": ["sanitized", "dropped"] },
+        "session_origin_included": { "type": "boolean" }
+      }
+    },
+    "Metadata": {
+      "description": "Free-form, untrusted key-value data (for example copied job labels). No floats, no secrets.",
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": { "type": "string", "pattern": "^[^\\u0000-\\u001f]{1,256}$" },
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "maxLength": 1024 },
+          { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+          { "type": "boolean" }
+        ]
+      }
+    },
+    "ImportRecord": {
+      "description": "One hop of an import from another store instance. Artifact.imports lists hops oldest first; the last element is the hop into the holding store.",
+      "type": "object",
+      "required": ["imported_at", "from", "via", "object_mode", "verified", "record_blake3"],
+      "properties": {
+        "imported_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "from": {
+          "type": "object",
+          "required": ["product", "store_id", "artifact_id"],
+          "properties": {
+            "product": { "$ref": "#/$defs/ProductName" },
+            "store_id": { "$ref": "#/$defs/StoreId" },
+            "artifact_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/ArtifactId" }
+          }
+        },
+        "via": {
+          "description": "How the source record was obtained: api (the source product's API, for example artifacts.get) or export_file (a file written by the source product).",
+          "enum": ["api", "export_file"]
+        },
+        "object_mode": {
+          "description": "How the bytes entered this store: reflink, copy, move, existing (an object with the same content was already present), none (record-only import).",
+          "enum": ["reflink", "copy", "move", "existing", "none"]
+        },
+        "verified": {
+          "description": "True iff this store computed both digests and the size from the bytes and they equal the source record's. False only with object_mode none.",
+          "type": "boolean"
+        },
+        "record_blake3": {
+          "description": "BLAKE3 of the JCS of the source record exactly as received. The received record is kept verbatim in the index.",
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        }
+      }
+    },
+    "Artifact": {
+      "description": "One artifact record. Mutable members: state, deleted_at, object.state, verification, retention, retain_until, license. Everything else is fixed at creation.",
+      "type": "object",
+      "required": [
+        "artifact_version", "id", "store_id", "state", "created_at",
+        "sha256", "blake3", "size_bytes", "object",
+        "name", "media_type", "declared_media_type",
+        "origin", "retrieved_at", "produced_at", "producer", "operation", "parents",
+        "job_id", "run_id", "license", "quarantined", "verification",
+        "retention", "retain_until", "imports", "metadata"
+      ],
+      "properties": {
+        "artifact_version": { "const": 1 },
+        "id": { "$ref": "https://zeus.invalid/schema/common#/$defs/ArtifactId" },
+        "store_id": { "$ref": "#/$defs/StoreId" },
+        "state": { "enum": ["active", "deleted"] },
+        "created_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "deleted_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
+        "sha256": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "blake3": { "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256" },
+        "size_bytes": { "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes" },
+        "object": { "$ref": "#/$defs/CasObjectRef" },
+        "name": {
+          "description": "Sanitised file name hint (01 section 12.3). Untrusted. Never a path.",
+          "type": ["string", "null"],
+          "maxLength": 255,
+          "pattern": "^[^/\\\\\\u0000-\\u001f]+$"
+        },
+        "media_type": { "type": ["string", "null"], "maxLength": 255 },
+        "declared_media_type": { "type": ["string", "null"], "maxLength": 255 },
+        "origin": { "$ref": "#/$defs/ArtifactOrigin" },
+        "retrieved_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
+        "produced_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
+        "producer": { "$ref": "#/$defs/Producer" },
+        "operation": { "$ref": "#/$defs/Operation" },
+        "parents": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/ParentRef" } },
+        "job_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" }, { "type": "null" }] },
+        "run_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" }, { "type": "null" }] },
+        "license": { "$ref": "https://zeus.invalid/schema/provenance-manifest.v0#/$defs/FileRecord/properties/license" },
+        "quarantined": { "type": "boolean" },
+        "quarantine_reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "https://zeus.invalid/schema/domain#/$defs/QuarantineReason" }
+        },
+        "verification": { "$ref": "#/$defs/Verification" },
+        "retention": { "enum": ["keep", "evictable"] },
+        "retain_until": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
+        "imports": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/ImportRecord" } },
+        "privacy": { "$ref": "#/$defs/Privacy" },
+        "metadata": { "$ref": "#/$defs/Metadata" },
+        "audit": { "$ref": "https://zeus.invalid/schema/provenance-manifest.v0#/$defs/FileRecord/properties/audit" }
+      }
+    }
+  }
+}

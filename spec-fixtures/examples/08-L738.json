@@ -1,0 +1,46 @@
+{
+  "run_id": "run_01M4ADV2QF8M1R7ZNC4T3K5W6P",
+  "plan_hash": "92dd886f1f8acab8b89e434114e9eae74e636f5baf268223a8fbca4603def6ca",
+  "checkpoint_seq": 471,
+  "updated_at": "2026-10-06T09:41:07.220Z",
+  "elapsed_ms": 1338410,
+  "chains": [
+    {
+      "chain": 0,
+      "source_index": 0,
+      "kind": "start_url",
+      "depth": 0,
+      "state": "active",
+      "end": null,
+      "pages_fetched": 23,
+      "next_url": "https://portal.example.org/library/reports?year=2026&page=24",
+      "page_value": 24,
+      "consecutive_no_new": 0,
+      "fingerprints": [
+        "4f3a3a0f6e3d2b8c1b7d0f4c6a9e2d5b8c7f1e0a3d6b9c2e5f8a1b4c7d0e3f6a",
+        "a1c4e7f0b3d6a9c2e5f8b1d4a7c0e3f6b9d2a5c8e1f4b7d0a3c6e9f2b5d8a1c4"
+      ]
+    }
+  ],
+  "counts": {
+    "pages_fetched": 23,
+    "pages_failed": 0,
+    "pages_skipped_robots": 0,
+    "items_seen": 460,
+    "items_duplicate": 0,
+    "items_filtered": 14,
+    "items_out_of_domain": 0,
+    "items_invalid": 0,
+    "items_skipped_existing": 0,
+    "files_enqueued": 446,
+    "files_completed": 431,
+    "files_failed": 2,
+    "files_canceled": 0,
+    "files_quarantined": 0,
+    "files_converted": 9,
+    "files_convert_failed": 0,
+    "bytes_done": 1262485504
+  },
+  "seen_keys_count": 906,
+  "next_item_index": 447
+}

@@ -1,0 +1,8 @@
+{
+  "imported_at": "2026-10-06T08:00:07.410Z",
+  "from": { "product": "zeus", "store_id": "01M2YVJ3K8W5D0QXNB7RT4CHAE", "artifact_id": "art_01M45SDP4G6YB0QW8ZK3NXJ7RT" },
+  "via": "api",
+  "object_mode": "copy",
+  "verified": true,
+  "record_blake3": "7d0e0061dfaf50b12b96f3cad4aece3fbf6a344ac46b0675a68bdde9e7e1f889"
+}

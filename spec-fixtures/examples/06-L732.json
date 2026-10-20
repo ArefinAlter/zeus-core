@@ -1,0 +1,8 @@
+{
+  "dry_run": false,
+  "jobs": [
+    { "job_id": "job_01M48AKW7127CFKCDGD85Q0BNX", "state": "awaiting_approval", "approval_id": "ap_01M48AKV3G4N115DH6YTN1CNX5", "bind_code": "WPB-ZD8", "next": { "action": "ask_user" } },
+    { "job_id": "job_01M48AKWBAB0G0FE7030CY82SR", "state": "awaiting_approval", "approval_id": "ap_01M48AKV3G4N115DH6YTN1CNX5", "bind_code": "WPB-ZD8", "next": { "action": "ask_user" } }
+  ],
+  "note": "Started. Jobs with an approval_id wait until the user approves them in Zeus; you cannot approve. Call zeus_wait."
+}

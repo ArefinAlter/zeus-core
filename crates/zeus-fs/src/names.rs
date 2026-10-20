@@ -12,10 +12,6 @@
 //! * alternate-data-stream syntax (`name:stream`) neutralised;
 //! * a name that is only dots becomes `download`;
 //! * Unicode NFC; length limited to 255 UTF-8 bytes (and 255 UTF-16 units) preserving the extension.
-#![expect(
-    unused_variables,
-    reason = "skeleton: bodies are filled in by the zeus-fs implementation task"
-)]
 
 use zeus_types::limits::MAX_FILE_NAME_BYTES;
 
@@ -87,7 +83,92 @@ impl SanitizedName {
 /// Fails with [`FsError::InvalidName`] only when nothing usable remains after every rule and the
 /// fallback is itself unusable.
 pub fn sanitize_filename(raw: &str, options: &SanitizeOptions) -> FsResult<SanitizedName> {
-    Err(FsError::NotImplemented("sanitize_filename"))
+    use unicode_normalization::UnicodeNormalization;
+    let mut reasons = Vec::new();
+    let normalized: String = raw.nfc().collect();
+    if normalized != raw {
+        reasons.push(SanitizeReason::Normalised);
+    }
+    let mut name = String::new();
+    for c in normalized.chars() {
+        if matches!(c, '/' | '\\') {
+            reasons.push(SanitizeReason::PathSeparators);
+        } else if c.is_control()
+            || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{206f}' | '\u{feff}')
+        {
+            reasons.push(SanitizeReason::InvisibleCharacters);
+        } else if "<>:\"|?*".contains(c) {
+            name.push('_');
+            reasons.push(if c == ':' {
+                SanitizeReason::StreamSyntax
+            } else {
+                SanitizeReason::IllegalCharacters
+            });
+        } else {
+            name.push(c);
+        }
+    }
+    if !name.is_empty() && name.chars().all(|c| c == '.') {
+        name = "download".into();
+        reasons.push(SanitizeReason::OnlyDots);
+    }
+    if name.contains("..") {
+        name = name.replace("..", "_");
+        reasons.push(SanitizeReason::PathSeparators);
+    }
+    let trimmed = name.trim_end_matches(['.', ' ']).to_string();
+    if trimmed != name {
+        reasons.push(SanitizeReason::TrailingDotsOrSpaces);
+        name = trimmed;
+    }
+    if name.is_empty() {
+        if options.fallback.is_empty() || options.fallback == raw {
+            return Err(FsError::InvalidName("unusable fallback"));
+        }
+        let mut fallback = sanitize_filename(
+            &options.fallback,
+            &SanitizeOptions {
+                fallback: String::new(),
+                ..options.clone()
+            },
+        )?;
+        fallback.reasons.push(SanitizeReason::EmptyFallback);
+        return Ok(fallback);
+    }
+    let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    if ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str())
+        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.len() == 4
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+    {
+        name.insert(0, '_');
+        reasons.push(SanitizeReason::ReservedDeviceName);
+    }
+    let max = options.max_bytes.min(255);
+    if max == 0 {
+        return Err(FsError::InvalidName("zero name length limit"));
+    }
+    if name.len() > max || name.encode_utf16().count() > 255 {
+        let (stem, ext) = name
+            .rsplit_once('.')
+            .filter(|(_, ext)| ext.len() < max / 2)
+            .map_or((name.as_str(), String::new()), |(s, e)| {
+                (s, format!(".{e}"))
+            });
+        let mut shortened = stem.to_string();
+        while shortened.len() + ext.len() > max
+            || shortened.encode_utf16().count() + ext.encode_utf16().count() > 255
+        {
+            shortened.pop();
+        }
+        name = shortened + &ext;
+        reasons.push(SanitizeReason::Truncated);
+    }
+    if name.is_empty() {
+        return Err(FsError::InvalidName("name limit is too small"));
+    }
+    reasons.dedup();
+    Ok(SanitizedName { name, reasons })
 }
 
 /// How to pick a new name when the desired one is taken (03 section 3.2).
@@ -108,7 +189,40 @@ pub fn unique_name(
     strategy: CollisionStrategy,
     case_insensitive: bool,
 ) -> FsResult<String> {
-    Err(FsError::NotImplemented("unique_name"))
+    let desired = sanitize_filename(desired, &SanitizeOptions::default())?.name;
+    let taken = |n: &str| is_taken(n) || (case_insensitive && is_taken(&n.to_lowercase()));
+    if !taken(&desired) {
+        return Ok(desired);
+    }
+    let (stem, ext) = desired
+        .rsplit_once('.')
+        .map_or((desired.as_str(), String::new()), |(s, e)| {
+            (s, format!(".{e}"))
+        });
+    for n in 1..=100_000u32 {
+        let suffix = match strategy {
+            CollisionStrategy::Counter => format!(" ({n})"),
+            CollisionStrategy::HashSuffix => {
+                use std::hash::{Hash, Hasher};
+                let mut hash = std::collections::hash_map::DefaultHasher::new();
+                desired.hash(&mut hash);
+                if n == 1 {
+                    format!("~{:04x}", hash.finish() & 0xffff)
+                } else {
+                    format!("~{:04x} ({n})", hash.finish() & 0xffff)
+                }
+            }
+        };
+        let mut shortened = stem.to_string();
+        while shortened.len() + suffix.len() + ext.len() > 255 {
+            shortened.pop();
+        }
+        let candidate = format!("{shortened}{suffix}{ext}");
+        if !taken(&candidate) {
+            return Ok(candidate);
+        }
+    }
+    Err(FsError::AlreadyExists)
 }
 
 /// The key under which a path is reserved in the journal (`reservations` table, 03 section 3.2):

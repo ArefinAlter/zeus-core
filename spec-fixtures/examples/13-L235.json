@@ -1,0 +1,43 @@
+{
+  "artifact_version": 1,
+  "id": "art_01M45SFV9A2HC5MRT7DKQ0WZ3N",
+  "store_id": "01M2YVJ3K8W5D0QXNB7RT4CHAE",
+  "state": "active",
+  "created_at": "2026-10-05T10:21:00.400Z",
+  "sha256": "f24f5ddf46354d10a2b2340f00bd9223e75c25a31b4328498f2fa98ebc55d096",
+  "blake3": "c8bd1103e018465a8abdca368d62f6d3af1f434442b10cfa47d0aed9d527a803",
+  "size_bytes": 4831838208,
+  "object": { "algorithm": "blake3", "digest": "c8bd1103e018465a8abdca368d62f6d3af1f434442b10cfa47d0aed9d527a803", "size_bytes": 4831838208, "state": "present" },
+  "name": "q3.csv",
+  "media_type": "text/csv",
+  "declared_media_type": null,
+  "origin": { "kind": "derived" },
+  "retrieved_at": null,
+  "produced_at": "2026-10-05T10:21:00.000Z",
+  "producer": { "product": "zeus", "version": "0.1.0", "engine": "0.1.0", "source_kind": "agent" },
+  "operation": {
+    "name": "zeus.convert",
+    "version": "0.1.0",
+    "params_blake3": "b2cdc08d6c8679fd667a9ab38d98f1750a9546c031cb09f1b849cefcdaf93d82",
+    "tool": { "name": "gzip", "version": "1.13" }
+  },
+  "parents": [
+    {
+      "artifact_id": "art_01M45SDP4G6YB0QW8ZK3NXJ7RT",
+      "blake3": "c3a07f73ec4e30b696bc8c5659e85461b00c76674eaeaa02ef12f6b8c83571ec",
+      "sha256": "9218812567e906efb346546840f6145fc189148e5633d0737fee7402a3207f9a",
+      "size_bytes": 1073741824,
+      "role": "input"
+    }
+  ],
+  "job_id": "job_01M45R71NCNH3W8EQ63TAFME4C",
+  "run_id": "run_01M45KGHR0ED0WJDFXKG49029B",
+  "license": { "spdx": "CC-BY-4.0", "source": "declared", "evidence_url": "https://files.example.com/exports/2026/LICENSE" },
+  "quarantined": false,
+  "verification": { "state": "verified", "checked_at": "2026-10-05T10:21:00.300Z", "basis": "self" },
+  "retention": "evictable",
+  "retain_until": null,
+  "imports": [],
+  "metadata": { "task": "quarterly-report" },
+  "audit": { "chain_id": "chain_01M3TC5H007DRT2QA1P1NY311K", "seq": 10, "hash": "3e5368402c4a310121179fe76ccf4411c5dba812cd66779c45c9c9291bdfdaa7" }
+}

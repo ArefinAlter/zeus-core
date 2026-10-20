@@ -3,10 +3,6 @@
 //!
 //! Hashes of a finished download are always computed from the bytes **on disk**, never from the
 //! buffers handed to `pwrite`, so write-path corruption is caught (03 section 8.1 step F0, I8).
-#![expect(
-    unused_variables,
-    reason = "skeleton: verify_file is filled in by the zeus-verify implementation task"
-)]
 
 use std::path::Path;
 
@@ -137,7 +133,65 @@ pub fn verify_file(
     options: &VerifyFileOptions,
     progress: &mut dyn FnMut(HashProgress) -> bool,
 ) -> VerifyResult<(Digests, Vec<u8>)> {
-    Err(VerifyError::NotImplemented("verify_file"))
+    use std::io::Read;
+    if options.buffer_bytes == 0
+        || options.buffer_bytes > 32 << 20
+        || options.progress_every_bytes == 0
+    {
+        return Err(VerifyError::Invalid(
+            "invalid hashing buffer or progress interval",
+        ));
+    }
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(VerifyError::Invalid("verification requires a regular file"));
+    }
+    let mut file = std::fs::File::open(path)?;
+    let before = file.metadata()?;
+    let mut buffer = vec![0; options.buffer_bytes];
+    let mut head = Vec::with_capacity(8192);
+    let mut hasher = DualHasher::new();
+    let mut reported = 0;
+    if !progress(HashProgress {
+        bytes_done: 0,
+        bytes_total: before.len(),
+    }) {
+        return Err(VerifyError::Invalid("verification canceled"));
+    }
+    loop {
+        let n = match file.read(&mut buffer) {
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            result => result?,
+        };
+        if n == 0 {
+            break;
+        }
+        head.extend_from_slice(&buffer[..n.min(8192 - head.len())]);
+        hasher.update(&buffer[..n]);
+        if hasher.size_bytes() - reported >= options.progress_every_bytes {
+            reported = hasher.size_bytes();
+            if !progress(HashProgress {
+                bytes_done: reported,
+                bytes_total: before.len(),
+            }) {
+                return Err(VerifyError::Invalid("verification canceled"));
+            }
+        }
+    }
+    let after = file.metadata()?;
+    if before.len() != after.len()
+        || before.modified()? != after.modified()?
+        || hasher.size_bytes() != before.len()
+    {
+        return Err(VerifyError::Invalid("file changed during verification"));
+    }
+    if !progress(HashProgress {
+        bytes_done: hasher.size_bytes(),
+        bytes_total: before.len(),
+    }) {
+        return Err(VerifyError::Invalid("verification canceled"));
+    }
+    Ok((hasher.finalize(), head))
 }
 
 #[cfg(test)]

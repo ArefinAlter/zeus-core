@@ -106,6 +106,9 @@ pub struct ApprovalResolution {
     pub approval: Approval,
     /// The grant the decision created, if any (`approve`, or `deny` with scope `never`).
     pub grant: Option<SessionGrant>,
+    /// The covered job to resolve. A batched approval (07 section 4.7) covers several jobs, each waiting with
+    /// this `approval_id`; `None` resolves the approval's own `job_id`.
+    pub job_id: Option<JobId>,
 }
 
 /// A change to the grants a job may depend on, from a revocation or an expiry sweep (01 section 5.2
@@ -161,4 +164,15 @@ mod tests {
         let p: Page<JobSummary> = Page::empty();
         assert!(p.items.is_empty() && p.next_cursor.is_none());
     }
+}
+
+/// Durable results of an emergency-stop policy transaction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KillSwitchOutcome {
+    /// Whether network admission is stopped.
+    pub engaged: bool,
+    /// Active allow grants revoked by this transaction.
+    pub grants_revoked: u64,
+    /// Interruptible jobs paused by this transaction.
+    pub jobs_paused: u64,
 }

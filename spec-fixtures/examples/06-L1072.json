@@ -1,0 +1,7 @@
+{
+  "status": "pending_user_approval",
+  "approval_id": "ap_01M48AKV7S0NB0FYQK5RV0MXK3",
+  "bind_code": "17M-4F1",
+  "expires_at": "2026-10-07T10:02:13.000Z",
+  "note": "Only the user can approve this, in the Zeus browser extension or terminal. Tell them, with the bind_code shown there. A grant appears in zeus_session_list once they approve."
+}

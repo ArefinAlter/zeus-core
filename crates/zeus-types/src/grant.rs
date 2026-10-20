@@ -48,6 +48,10 @@ pub enum Surface {
     Tui,
     /// An interactive CLI prompt on the controlling terminal.
     CliInteractive,
+    /// The native desktop trust surface.
+    Gui,
+    /// A trusted operating-system notification.
+    OsNotification,
     /// The MCP server.
     Mcp,
     /// The A2A endpoint.
@@ -57,6 +61,12 @@ pub enum Surface {
 }
 
 impl Surface {
+    /// True for surfaces permitted to approve or create lasting authority.
+    #[must_use]
+    pub const fn is_approving_surface(self) -> bool {
+        self.is_trust_surface() && !matches!(self, Self::ExtensionNotification)
+    }
+
     /// True for the surfaces that are trust surfaces: only a human can drive them (00 section 2).
     /// MCP, A2A and raw JSON-RPC are never trust surfaces.
     #[must_use]
@@ -69,6 +79,7 @@ impl Surface {
                 | Self::ExtensionNotification
                 | Self::Tui
                 | Self::CliInteractive
+                | Self::Gui
         )
     }
 }
@@ -185,6 +196,18 @@ pub enum GrantState {
     Consumed,
 }
 
+/// Recorded cause for a grant revocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RevocationReason {
+    /// Explicit human action.
+    UserRequest,
+    /// Daemon kill switch.
+    KillSwitch,
+    /// A never grant blocks the origin.
+    OriginBlocked,
+}
+
 /// A recorded consent. Holds no cookies: cookies are fetched per use and wiped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SessionGrant {
@@ -223,6 +246,15 @@ pub struct SessionGrant {
     /// Times it was renewed.
     #[serde(default)]
     pub renewal_count: u32,
+    /// Latest human renewal time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renewed_at: Option<Timestamp>,
+    /// Actor who revoked this consent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revoked_by: Option<Actor>,
+    /// Reason for the revocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revocation_reason: Option<RevocationReason>,
 }
 
 impl SessionGrant {
@@ -302,6 +334,8 @@ pub enum ApprovalKind {
     WorkflowPlan,
     /// A file operation that deletes or overwrites.
     DestructiveOp,
+    /// One exact source, cloud account revision, destination, mode and budget.
+    CloudDelivery,
 }
 
 impl ApprovalKind {
@@ -317,7 +351,10 @@ impl ApprovalKind {
                 GrantScope::Never,
             ],
             Self::WorkflowPlan => &[GrantScope::Workflow],
-            Self::RetryEscalation | Self::PolicyException | Self::DestructiveOp => &[],
+            Self::RetryEscalation
+            | Self::PolicyException
+            | Self::DestructiveOp
+            | Self::CloudDelivery => &[],
         }
     }
 
@@ -326,9 +363,11 @@ impl ApprovalKind {
     pub const fn default_expiry_ms(self) -> u64 {
         match self {
             Self::RetryEscalation | Self::WorkflowPlan => 604_800_000,
-            Self::Handoff | Self::SessionGrant | Self::PolicyException | Self::DestructiveOp => {
-                86_400_000
-            }
+            Self::Handoff
+            | Self::SessionGrant
+            | Self::PolicyException
+            | Self::DestructiveOp
+            | Self::CloudDelivery => 86_400_000,
         }
     }
 }
@@ -403,6 +442,21 @@ pub struct Decision {
 pub struct Approval {
     /// Identifier.
     pub id: ApprovalId,
+    /// Daemon-computed BLAKE3 over canonical approval facts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_hash: Option<crate::Hex256>,
+    /// Authenticated requesting credential, independent of display text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_by: Option<String>,
+    /// Revision bound into the decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u32>,
+    /// Daemon-computed facts, present only on full approval views.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub facts: Option<serde_json::Map<String, serde_json::Value>>,
+    /// Untrusted requester annotation, shown separately from trusted facts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_says: Option<String>,
     /// What is being asked.
     pub kind: ApprovalKind,
     /// Lifecycle state.
@@ -469,6 +523,9 @@ mod tests {
             revoked_at: None,
             renewable: scope.renewable(),
             renewal_count: 0,
+            renewed_at: None,
+            revoked_by: None,
+            revocation_reason: None,
         }
     }
 

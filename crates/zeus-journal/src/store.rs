@@ -76,6 +76,9 @@ pub trait ReadTxn {
     /// One approval.
     fn approval(&self, id: ApprovalId) -> JournalResult<Option<Approval>>;
 
+    /// Private decision evidence, never projected into public approval/event payloads.
+    fn approval_decision(&self, id: ApprovalId) -> JournalResult<Option<serde_json::Value>>;
+
     /// Approvals in any of `states` (`None` for all), ascending by id.
     fn approvals(&self, states: Option<&[ApprovalState]>) -> JournalResult<Vec<Approval>>;
 
@@ -136,17 +139,33 @@ pub trait WriteTxn: ReadTxn {
     /// Inserts or replaces an approval.
     fn put_approval(&mut self, approval: &Approval) -> JournalResult<()>;
 
+    /// Store immutable private evidence for an already-decided approval in this transaction.
+    /// The bounded JSON object must bind its `approval_id`, revision and request hash to that
+    /// approval. Replaying the identical record is allowed; replacing evidence is refused.
+    fn put_approval_decision(
+        &mut self,
+        id: ApprovalId,
+        decision: &serde_json::Value,
+    ) -> JournalResult<()>;
+
     /// Inserts an idempotency row.
     fn put_idempotency(&mut self, row: &IdempotencyRow) -> JournalResult<()>;
 
-    /// Deletes idempotency rows past their `expires_at`; returns how many.
+    /// Deletes expired idempotency rows only after their referenced job is removed; returns how many.
+    /// Receipts remain valid while a job exists so delayed batch retries cannot create duplicates.
     fn expire_idempotency(&mut self, now: Timestamp) -> JournalResult<u64>;
+
+    /// Persist the emergency-stop latch in the same transaction as related policy changes.
+    fn set_kill_switch(&mut self, engaged: bool) -> JournalResult<()>;
 
     /// Updates the audit head in `meta`.
     fn set_audit_head(&mut self, head: Option<AuditHead>) -> JournalResult<()>;
 
     /// Advances the outbox cursors in `meta`; they never move backwards.
     fn set_cursors(&mut self, audit_cursor: u64, manifest_cursor: u64) -> JournalResult<()>;
+
+    /// Advance artifact registration after the audit outbox has committed.
+    fn set_artifact_cursor(&mut self, cursor: u64) -> JournalResult<()>;
 
     /// Commits durably. After `Ok`, everything is on stable storage. On `Err` the outcome may be
     /// ambiguous ([`crate::JournalError::CommitAmbiguous`]): the caller re-reads and reconciles.

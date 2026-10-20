@@ -1,0 +1,6535 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeus.invalid/schema/daemon-api.v1",
+  "title": "Zeus daemon API v1",
+  "description": "JSON-RPC 2.0, one message per line, over the local endpoint of zeusd. Normative text: docs/spec/05-daemon-api-v1.md (prose wins over this schema). Per method: <Name>Params, <Name>Result, <Name>Request, <Name>Response, where <Name> is the method name in PascalCase without dots (jobs.enqueue -> JobsEnqueue).",
+  "$defs": {
+    "JsonRpcVersion": {
+      "const": "2.0"
+    },
+    "RequestId": {
+      "description": "Chosen by the requester, unique among its in-flight requests on the connection (section 4.4).",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      ]
+    },
+    "MethodName": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "IdempotencyKey": {
+      "description": "00 section 5.4 and section 12.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "Cursor": {
+      "description": "Opaque; valid only for the same method and filters. At most 512 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "PageParams": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "Page size. Absent: 50. Values above 100 are treated as 100; 0 is invalid.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "cursor": {
+          "$ref": "#/$defs/Cursor"
+        }
+      }
+    },
+    "Nonce": {
+      "description": "32 random bytes as 64 lowercase hex digits, fresh per connection.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "CredentialId": {
+      "description": "Client credential id (00 section 5.1 prefix cli_).",
+      "type": "string",
+      "pattern": "^cli_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    },
+    "PlanId": {
+      "type": "string",
+      "pattern": "^plan_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    },
+    "InstanceId": {
+      "description": "Random id of one daemon run, 32 lowercase hex digits.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "SubscriptionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "EventSeqOrZero": {
+      "description": "An event sequence (00 section 5.2) or 0 meaning none.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "ClientKind": {
+      "description": "Authority class of a credential (section 7.1).",
+      "enum": [
+        "agent",
+        "human",
+        "admin",
+        "service"
+      ]
+    },
+    "ClientRole": {
+      "description": "The concrete program behind a credential (section 7.2).",
+      "enum": [
+        "cli",
+        "tui",
+        "gui",
+        "native_host",
+        "mcp",
+        "a2a",
+        "service",
+        "embedded",
+        "test"
+      ]
+    },
+    "Permission": {
+      "description": "Fine-grained permission (section 7.3).",
+      "enum": [
+        "jobs.read",
+        "jobs.write",
+        "jobs.control",
+        "events.read",
+        "sessions.read",
+        "sessions.request",
+        "sessions.revoke",
+        "approvals.read",
+        "approvals.decide",
+        "files.read",
+        "files.write",
+        "files.roots.register",
+        "workflows.plan",
+        "workflows.run",
+        "audit.read",
+        "config.read",
+        "config.write",
+        "llm.read",
+        "llm.configure",
+        "daemon.read",
+        "daemon.admin",
+        "kill_switch",
+        "nm.relay"
+      ]
+    },
+    "HumanChannel": {
+      "description": "A trust surface reachable over the daemon API (section 9.4). Extension surfaces act only through nm.frame.",
+      "enum": [
+        "cli_interactive",
+        "tui",
+        "gui"
+      ]
+    },
+    "GrantScopeHint": {
+      "enum": [
+        "once",
+        "site",
+        "workflow"
+      ]
+    },
+    "ApprovalState": {
+      "enum": [
+        "pending",
+        "approved",
+        "denied",
+        "expired",
+        "canceled"
+      ]
+    },
+    "ConfigKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+    },
+    "PathText": {
+      "description": "An absolute path on the daemon host, or a path relative to a write root where the method says so. At most 4096 bytes.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "RequestBase": {
+      "type": "object",
+      "required": [
+        "jsonrpc",
+        "id",
+        "method"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "$ref": "#/$defs/JsonRpcVersion"
+        },
+        "id": {
+          "$ref": "#/$defs/RequestId"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodName"
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    },
+    "SuccessBase": {
+      "type": "object",
+      "required": [
+        "jsonrpc",
+        "id",
+        "result"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "$ref": "#/$defs/JsonRpcVersion"
+        },
+        "id": {
+          "$ref": "#/$defs/RequestId"
+        },
+        "result": {}
+      }
+    },
+    "NotificationBase": {
+      "type": "object",
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "$ref": "#/$defs/JsonRpcVersion"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodName"
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    },
+    "ErrorObject": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "properties": {
+        "code": {
+          "description": "JSON-RPC numeric code (section 11.1).",
+          "type": "integer",
+          "minimum": -32768,
+          "maximum": -32000
+        },
+        "message": {
+          "description": "Equal to data.message.",
+          "type": "string",
+          "maxLength": 1024
+        },
+        "data": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorEnvelope"
+        }
+      }
+    },
+    "ErrorResponse": {
+      "description": "A failed call. data always carries the 00 error envelope.",
+      "type": "object",
+      "required": [
+        "jsonrpc",
+        "id",
+        "error"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "$ref": "#/$defs/JsonRpcVersion"
+        },
+        "id": {
+          "description": "Null only when the request id could not be read.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RequestId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "$ref": "#/$defs/ErrorObject"
+        }
+      }
+    },
+    "ClientInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "role"
+      ],
+      "properties": {
+        "name": {
+          "description": "Program name. Self-declared, untrusted, for logs only.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "role": {
+          "$ref": "#/$defs/ClientRole"
+        }
+      }
+    },
+    "DaemonInfo": {
+      "type": "object",
+      "required": [
+        "version",
+        "instance_id"
+      ],
+      "properties": {
+        "version": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer"
+        },
+        "instance_id": {
+          "$ref": "#/$defs/InstanceId"
+        }
+      }
+    },
+    "ConnectionLimits": {
+      "type": "object",
+      "required": [
+        "max_request_bytes",
+        "max_response_bytes",
+        "max_in_flight_requests",
+        "max_subscriptions",
+        "event_buffer"
+      ],
+      "properties": {
+        "max_request_bytes": {
+          "description": "Longest line the daemon accepts from this client.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_response_bytes": {
+          "description": "Longest line the daemon sends to this client.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_in_flight_requests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "max_subscriptions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "event_buffer": {
+          "description": "Events queued per subscription before events.lagged.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        }
+      }
+    },
+    "AttachInfo": {
+      "type": "object",
+      "required": [
+        "browser",
+        "attested_extension",
+        "host_version",
+        "parent_verified"
+      ],
+      "properties": {
+        "browser": {
+          "$ref": "https://zeus.invalid/schema/native-messaging.v1#/$defs/BrowserName"
+        },
+        "attested_extension": {
+          "description": "Extension id taken from the host argv and found in the host allow-list (02 section 3.4).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "host_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "parent_verified": {
+          "description": "The host found its parent process (or, on Windows, the grandparent behind cmd.exe) to be a registered browser executable (07 section 7.4).",
+          "type": "boolean"
+        }
+      }
+    },
+    "DiscoveryRecord": {
+      "description": "Content of <state>/zeusd.json (section 5.1).",
+      "type": "object",
+      "required": [
+        "pid",
+        "instance_id",
+        "version",
+        "protocol_versions",
+        "endpoint",
+        "started_at"
+      ],
+      "properties": {
+        "pid": {
+          "description": "Informational. Liveness is decided by connecting, never by the pid.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "instance_id": {
+          "$ref": "#/$defs/InstanceId"
+        },
+        "version": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/SemVer"
+        },
+        "protocol_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/common#/$defs/ProtocolVersion"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "endpoint": {
+          "description": "Full pipe name or absolute socket path.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "started_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        }
+      }
+    },
+    "AuditHead": {
+      "type": "object",
+      "required": [
+        "chain_id",
+        "seq",
+        "hash"
+      ],
+      "properties": {
+        "chain_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ChainId"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "hash": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        }
+      }
+    },
+    "ServiceRoot": {
+      "description": "A write root registered by a service client (section 7.6).",
+      "type": "object",
+      "required": [
+        "path",
+        "client_id",
+        "created_at"
+      ],
+      "properties": {
+        "path": {
+          "description": "Absolute, canonical path of the root.",
+          "$ref": "#/$defs/PathText"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "client_id": {
+          "$ref": "#/$defs/CredentialId"
+        },
+        "created_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        }
+      }
+    },
+    "ClientRecord": {
+      "description": "A client credential as the daemon describes it. Never contains the token or its verifier.",
+      "type": "object",
+      "required": [
+        "credential_id",
+        "name",
+        "kind",
+        "role",
+        "permissions",
+        "created_at",
+        "revoked"
+      ],
+      "properties": {
+        "credential_id": {
+          "$ref": "#/$defs/CredentialId"
+        },
+        "name": {
+          "description": "File name stem under <state>/credentials/.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/ClientKind"
+        },
+        "role": {
+          "$ref": "#/$defs/ClientRole"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Permission"
+          },
+          "uniqueItems": true
+        },
+        "created_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        },
+        "last_used_at": {
+          "oneOf": [
+            {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revoked": {
+          "type": "boolean"
+        },
+        "revoked_at": {
+          "oneOf": [
+            {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "roots": {
+          "description": "Service clients only: their registered roots.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ServiceRoot"
+          }
+        }
+      }
+    },
+    "JobSpecView": {
+      "description": "A JobSpec (01 section 3.2) with every URL redacted (00 section 8.2, mode log) and header values removed.",
+      "type": "object",
+      "required": [
+        "url_redacted",
+        "priority",
+        "overwrite",
+        "max_connections",
+        "transport_hint",
+        "source"
+      ],
+      "properties": {
+        "url_redacted": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl"
+        },
+        "hint_url_redacted": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl"
+        },
+        "referrer_redacted": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl"
+        },
+        "dest_dir": {
+          "$ref": "#/$defs/PathText"
+        },
+        "filename": {
+          "description": "Untrusted data (01 section 12.1).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "expected_sha256": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "expected_size": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes"
+        },
+        "priority": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/Priority"
+        },
+        "session_origin": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
+        },
+        "grant_scope_hint": {
+          "$ref": "#/$defs/GrantScopeHint"
+        },
+        "extra_header_names": {
+          "description": "Names only; values are never returned.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "maxItems": 16
+        },
+        "overwrite": {
+          "enum": [
+            "rename",
+            "fail",
+            "replace"
+          ]
+        },
+        "max_connections": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "transport_hint": {
+          "enum": [
+            "auto",
+            "direct",
+            "browser_proxy"
+          ]
+        },
+        "labels": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "maxLength": 256
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "source": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/Source"
+        }
+      }
+    },
+    "JobView": {
+      "description": "The Job of 01 section 3.1 safe for any client: spec replaced by JobSpecView.",
+      "type": "object",
+      "required": [
+        "id",
+        "state",
+        "quarantined",
+        "spec",
+        "created_at",
+        "updated_at",
+        "state_since",
+        "progress",
+        "retry",
+        "transport"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+        },
+        "state": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/JobState"
+        },
+        "quarantined": {
+          "type": "boolean"
+        },
+        "quarantine_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/domain#/$defs/QuarantineReason"
+          }
+        },
+        "spec": {
+          "$ref": "#/$defs/JobSpecView"
+        },
+        "created_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        },
+        "updated_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        },
+        "state_since": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        },
+        "probe": {
+          "oneOf": [
+            {
+              "$ref": "https://zeus.invalid/schema/domain#/$defs/ProbeResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "progress": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/Progress"
+        },
+        "retry": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/RetryState"
+        },
+        "error": {
+          "oneOf": [
+            {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorEnvelope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "oneOf": [
+            {
+              "$ref": "https://zeus.invalid/schema/domain#/$defs/JobResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "transport": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/Transport"
+        },
+        "grant_id": {
+          "oneOf": [
+            {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/GrantId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval_id": {
+          "oneOf": [
+            {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "NewJob": {
+      "description": "The caller-settable fields of a JobSpec (01 section 3.2). There is no source and no run_id: the daemon derives the source from the connection (section 7.2).",
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Url"
+        },
+        "hint_url": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Url"
+        },
+        "referrer": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Url"
+        },
+        "dest_dir": {
+          "$ref": "#/$defs/PathText"
+        },
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "expected_sha256": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "expected_size": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes"
+        },
+        "priority": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/Priority"
+        },
+        "session_origin": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
+        },
+        "grant_scope_hint": {
+          "$ref": "#/$defs/GrantScopeHint"
+        },
+        "extra_headers": {
+          "description": "At most 16; names from the allow-list of 01 section 3.2 (case-insensitive). Values are secrets for logging purposes.",
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9-]{1,64}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "overwrite": {
+          "enum": [
+            "rename",
+            "fail",
+            "replace"
+          ]
+        },
+        "max_connections": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "transport_hint": {
+          "enum": [
+            "auto",
+            "direct",
+            "browser_proxy"
+          ]
+        },
+        "labels": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "maxLength": 256
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 256
+          }
+        }
+      }
+    },
+    "PlannedJob": {
+      "type": "object",
+      "required": [
+        "url_redacted",
+        "approval_needed"
+      ],
+      "properties": {
+        "url_redacted": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl"
+        },
+        "resolved_filename": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "dest_path": {
+          "$ref": "#/$defs/PathText"
+        },
+        "approval_needed": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorCode"
+          },
+          "maxItems": 16
+        }
+      }
+    },
+    "EnqueuedJob": {
+      "description": "One entry per requested job, in request order: job_id and state, or plan (dry run), or error.",
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+        },
+        "state": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/JobState"
+        },
+        "approval_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId"
+        },
+        "plan": {
+          "$ref": "#/$defs/PlannedJob"
+        },
+        "error": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorEnvelope"
+        }
+      }
+    },
+    "ApprovalView": {
+      "description": "An approval as the API returns it: the ApprovalRequest of 07 (01 Approval plus request_hash, requested_by, revision, facts, agent_says). Section 9.5.",
+      "$ref": "https://zeus.invalid/schema/approvals.v1#/$defs/ApprovalRequest"
+    },
+    "FileEntry": {
+      "type": "object",
+      "required": [
+        "root",
+        "path",
+        "size_bytes",
+        "modified_at",
+        "quarantined"
+      ],
+      "properties": {
+        "root": {
+          "description": "The write root containing the file (absolute).",
+          "$ref": "#/$defs/PathText"
+        },
+        "path": {
+          "description": "Path relative to root. Untrusted data.",
+          "$ref": "#/$defs/PathText"
+        },
+        "size_bytes": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes"
+        },
+        "modified_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        },
+        "sha256": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "quarantined": {
+          "type": "boolean"
+        },
+        "job_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+        },
+        "source_url_redacted": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl"
+        },
+        "partial": {
+          "description": "True for the .zpart file of an unfinished job.",
+          "type": "boolean"
+        }
+      }
+    },
+    "FileStep": {
+      "type": "object",
+      "required": [
+        "op",
+        "from",
+        "destructive"
+      ],
+      "properties": {
+        "op": {
+          "enum": [
+            "move",
+            "rename",
+            "convert",
+            "trash"
+          ]
+        },
+        "from": {
+          "$ref": "#/$defs/PathText"
+        },
+        "to": {
+          "$ref": "#/$defs/PathText"
+        },
+        "destructive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DoctorCheck": {
+      "type": "object",
+      "required": [
+        "id",
+        "status",
+        "summary"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "warn",
+            "fail"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "fix": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        }
+      }
+    },
+    "RunStatus": {
+      "enum": [
+        "awaiting_approval",
+        "running",
+        "paused",
+        "completed",
+        "budget_exhausted",
+        "stopped",
+        "failed",
+        "canceled"
+      ]
+    },
+    "RungStatus": {
+      "type": "object",
+      "required": [
+        "provider",
+        "rung",
+        "status",
+        "configured"
+      ],
+      "properties": {
+        "provider": {
+          "description": "Provider kind (spec 09).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "rung": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "status": {
+          "enum": [
+            "enabled",
+            "experimental",
+            "disabled"
+          ]
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        }
+      }
+    },
+    "SpendCaps": {
+      "type": "object",
+      "required": [
+        "daily_micro_usd",
+        "monthly_micro_usd"
+      ],
+      "properties": {
+        "daily_micro_usd": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "monthly_micro_usd": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "LineageNode": {
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "blake3",
+        "size_bytes",
+        "depth",
+        "links"
+      ],
+      "properties": {
+        "artifact_id": {
+          "description": "Null for a content-only node (13 section 4.3).",
+          "oneOf": [
+            {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/ArtifactId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "blake3": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "size_bytes": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes"
+        },
+        "depth": {
+          "description": "0 for the start record.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "links": {
+          "description": "Indexes into nodes: the parents (ancestors) or children (descendants), with the parent role.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "node",
+              "role"
+            ],
+            "properties": {
+              "node": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 499
+              },
+              "role": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      }
+    },
+    "DaemonHelloParams": {
+      "description": "Parameters of daemon.hello (MVP).",
+      "type": "object",
+      "required": [
+        "protocol_versions",
+        "client",
+        "client_nonce"
+      ],
+      "properties": {
+        "protocol_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/common#/$defs/ProtocolVersion"
+          },
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/common#/$defs/CapabilityName"
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "client": {
+          "$ref": "#/$defs/ClientInfo"
+        },
+        "client_nonce": {
+          "$ref": "#/$defs/Nonce"
+        }
+      }
+    },
+    "DaemonHelloResult": {
+      "description": "Result of daemon.hello.",
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "capabilities",
+        "limits",
+        "daemon",
+        "server_nonce",
+        "server_proof"
+      ],
+      "properties": {
+        "protocol_version": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ProtocolVersion"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/common#/$defs/CapabilityName"
+          },
+          "uniqueItems": true
+        },
+        "limits": {
+          "$ref": "#/$defs/ConnectionLimits"
+        },
+        "daemon": {
+          "$ref": "#/$defs/DaemonInfo"
+        },
+        "server_nonce": {
+          "$ref": "#/$defs/Nonce"
+        },
+        "server_proof": {
+          "description": "BLAKE3-keyed(ipc_secret, \"zeus-server-v1\" || client_nonce), hex (section 6.4).",
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        }
+      }
+    },
+    "DaemonHelloRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "daemon.hello"
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonHelloParams"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonHelloResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/DaemonHelloResult"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonAuthenticateParams": {
+      "description": "Parameters of daemon.authenticate (MVP).",
+      "type": "object",
+      "required": [
+        "credential_id",
+        "proof"
+      ],
+      "properties": {
+        "credential_id": {
+          "$ref": "#/$defs/CredentialId"
+        },
+        "proof": {
+          "description": "BLAKE3-keyed(auth_key, \"zeus-client-v1\" || credential_id || server_nonce || client_nonce), hex (section 6.4).",
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "attach": {
+          "$ref": "#/$defs/AttachInfo"
+        }
+      }
+    },
+    "DaemonAuthenticateResult": {
+      "description": "Result of daemon.authenticate.",
+      "type": "object",
+      "required": [
+        "client_id",
+        "kind",
+        "credential_kind",
+        "downgraded",
+        "role",
+        "permissions",
+        "limits",
+        "connection_id"
+      ],
+      "properties": {
+        "client_id": {
+          "$ref": "#/$defs/CredentialId"
+        },
+        "kind": {
+          "description": "Effective kind of this connection.",
+          "$ref": "#/$defs/ClientKind"
+        },
+        "credential_kind": {
+          "$ref": "#/$defs/ClientKind"
+        },
+        "downgraded": {
+          "description": "True when kind is lower than credential_kind (07 section 7.2).",
+          "type": "boolean"
+        },
+        "role": {
+          "$ref": "#/$defs/ClientRole"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Permission"
+          },
+          "uniqueItems": true
+        },
+        "limits": {
+          "$ref": "#/$defs/ConnectionLimits"
+        },
+        "connection_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ConnectionId"
+        }
+      }
+    },
+    "DaemonAuthenticateRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "daemon.authenticate"
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonAuthenticateParams"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonAuthenticateResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/DaemonAuthenticateResult"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonPingParams": {
+      "description": "Parameters of daemon.ping (MVP).",
+      "type": "object",
+      "properties": {}
+    },
+    "DaemonPingResult": {
+      "description": "Result of daemon.ping.",
+      "type": "object",
+      "required": [
+        "server_time"
+      ],
+      "properties": {
+        "server_time": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        }
+      }
+    },
+    "DaemonPingRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "daemon.ping"
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonPingParams"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonPingResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/DaemonPingResult"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonStatusParams": {
+      "description": "Parameters of daemon.status (MVP).",
+      "type": "object",
+      "properties": {}
+    },
+    "DaemonStatusResult": {
+      "description": "Result of daemon.status.",
+      "type": "object",
+      "required": [
+        "daemon",
+        "protocol_version",
+        "started_at",
+        "uptime_ms",
+        "head_seq",
+        "jobs",
+        "pending_approvals",
+        "extension_connected",
+        "kill_switch_engaged",
+        "journal_ok"
+      ],
+      "properties": {
+        "daemon": {
+          "$ref": "#/$defs/DaemonInfo"
+        },
+        "protocol_version": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ProtocolVersion"
+        },
+        "started_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        },
+        "uptime_ms": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/DurationMs"
+        },
+        "head_seq": {
+          "$ref": "#/$defs/EventSeqOrZero"
+        },
+        "jobs": {
+          "description": "Job counts per state; states with zero jobs may be omitted.",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "https://zeus.invalid/schema/domain#/$defs/JobState"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "pending_approvals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "extension_connected": {
+          "type": "boolean"
+        },
+        "kill_switch_engaged": {
+          "type": "boolean"
+        },
+        "journal_ok": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonStatusRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "daemon.status"
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonStatusParams"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonStatusResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/DaemonStatusResult"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonShutdownParams": {
+      "description": "Parameters of daemon.shutdown (MVP).",
+      "type": "object",
+      "properties": {
+        "grace_ms": {
+          "description": "Default 10000.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "DaemonShutdownResult": {
+      "description": "Result of daemon.shutdown.",
+      "type": "object",
+      "required": [
+        "accepted",
+        "grace_ms",
+        "replayed"
+      ],
+      "properties": {
+        "accepted": {
+          "type": "boolean"
+        },
+        "grace_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonShutdownRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "daemon.shutdown"
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonShutdownParams"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonShutdownResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/DaemonShutdownResult"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonKillSwitchParams": {
+      "$ref": "https://zeus.invalid/schema/approvals.v1#/$defs/KillSwitchRequest"
+    },
+    "DaemonKillSwitchResult": {
+      "description": "Result of daemon.kill_switch.",
+      "allOf": [
+        {
+          "$ref": "https://zeus.invalid/schema/approvals.v1#/$defs/KillSwitchResult"
+        },
+        {
+          "type": "object",
+          "required": [
+            "replayed"
+          ],
+          "properties": {
+            "replayed": {
+              "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonKillSwitchRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "daemon.kill_switch"
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKillSwitchParams"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonKillSwitchResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/DaemonKillSwitchResult"
+            }
+          }
+        }
+      ]
+    },
+    "JobsProbeParams": {
+      "description": "Parameters of jobs.probe (MVP).",
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Url"
+        },
+        "session_origin": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
+        }
+      }
+    },
+    "JobsProbeResult": {
+      "description": "Result of jobs.probe.",
+      "type": "object",
+      "required": [
+        "probe",
+        "approval_needed"
+      ],
+      "properties": {
+        "probe": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/ProbeResult"
+        },
+        "effective_grant": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/GrantId"
+        },
+        "approval_needed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "JobsProbeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "jobs.probe"
+            },
+            "params": {
+              "$ref": "#/$defs/JobsProbeParams"
+            }
+          }
+        }
+      ]
+    },
+    "JobsProbeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/JobsProbeResult"
+            }
+          }
+        }
+      ]
+    },
+    "JobsEnqueueParams": {
+      "description": "Parameters of jobs.enqueue (MVP).",
+      "type": "object",
+      "required": [
+        "jobs"
+      ],
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NewJob"
+          },
+          "minItems": 1,
+          "maxItems": 100
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "JobsEnqueueResult": {
+      "description": "Result of jobs.enqueue.",
+      "type": "object",
+      "required": [
+        "jobs",
+        "dry_run",
+        "replayed"
+      ],
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EnqueuedJob"
+          }
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "JobsEnqueueRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "jobs.enqueue"
+            },
+            "params": {
+              "$ref": "#/$defs/JobsEnqueueParams"
+            }
+          }
+        }
+      ]
+    },
+    "JobsEnqueueResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/JobsEnqueueResult"
+            }
+          }
+        }
+      ]
+    },
+    "JobsListParams": {
+      "description": "Parameters of jobs.list (MVP).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageParams"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "states": {
+              "type": "array",
+              "items": {
+                "$ref": "https://zeus.invalid/schema/domain#/$defs/JobState"
+              },
+              "uniqueItems": true
+            },
+            "source_kind": {
+              "$ref": "https://zeus.invalid/schema/domain#/$defs/SourceKind"
+            },
+            "run_id": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/RunId"
+            },
+            "origin": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
+            }
+          }
+        }
+      ]
+    },
+    "JobsListResult": {
+      "description": "Result of jobs.list.",
+      "type": "object",
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/domain#/$defs/JobSummary"
+          }
+        },
+        "next_cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "JobsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "jobs.list"
+            },
+            "params": {
+              "$ref": "#/$defs/JobsListParams"
+            }
+          }
+        }
+      ]
+    },
+    "JobsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/JobsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "JobsGetParams": {
+      "description": "Parameters of jobs.get (MVP).",
+      "type": "object",
+      "required": [
+        "job_id"
+      ],
+      "properties": {
+        "job_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+        },
+        "reveal_urls": {
+          "description": "Human-only and audited (section 9.2).",
+          "type": "boolean"
+        }
+      }
+    },
+    "JobsGetResult": {
+      "description": "Result of jobs.get.",
+      "type": "object",
+      "required": [
+        "job"
+      ],
+      "properties": {
+        "job": {
+          "$ref": "#/$defs/JobView"
+        },
+        "revealed": {
+          "x-zeus-secret": true,
+          "description": "Raw URLs, only when a human-kind client set reveal_urls. Secret: never logged.",
+          "type": "object",
+          "required": [
+            "url"
+          ],
+          "properties": {
+            "url": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Url"
+            },
+            "hint_url": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Url"
+            }
+          }
+        }
+      }
+    },
+    "JobsGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "jobs.get"
+            },
+            "params": {
+              "$ref": "#/$defs/JobsGetParams"
+            }
+          }
+        }
+      ]
+    },
+    "JobsGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/JobsGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "JobsWaitParams": {
+      "description": "Parameters of jobs.wait (MVP).",
+      "type": "object",
+      "required": [
+        "job_ids",
+        "timeout_ms"
+      ],
+      "properties": {
+        "job_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+          },
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "until": {
+          "description": "Default settled_or_blocked.",
+          "enum": [
+            "settled_or_blocked",
+            "all_final",
+            "any_change"
+          ]
+        },
+        "since_seq": {
+          "description": "Only state changes recorded after this event sequence count (section 9.2).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        },
+        "progress_bytes": {
+          "description": "Also return once any watched job committed at least this many new bytes.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "JobsWaitResult": {
+      "description": "Result of jobs.wait.",
+      "type": "object",
+      "required": [
+        "jobs",
+        "timed_out",
+        "head_seq"
+      ],
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/domain#/$defs/JobSummary"
+          }
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "head_seq": {
+          "$ref": "#/$defs/EventSeqOrZero"
+        }
+      }
+    },
+    "JobsWaitRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "jobs.wait"
+            },
+            "params": {
+              "$ref": "#/$defs/JobsWaitParams"
+            }
+          }
+        }
+      ]
+    },
+    "JobsWaitResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/JobsWaitResult"
+            }
+          }
+        }
+      ]
+    },
+    "JobsControlParams": {
+      "description": "Parameters of jobs.control (MVP).",
+      "type": "object",
+      "required": [
+        "job_id",
+        "action"
+      ],
+      "properties": {
+        "job_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+        },
+        "action": {
+          "enum": [
+            "pause",
+            "resume",
+            "cancel",
+            "retry",
+            "retry_now",
+            "reprioritize"
+          ]
+        },
+        "priority": {
+          "description": "Required for reprioritize, forbidden otherwise.",
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/Priority"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "JobsControlResult": {
+      "description": "Result of jobs.control.",
+      "type": "object",
+      "required": [
+        "job",
+        "replayed"
+      ],
+      "properties": {
+        "job": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/JobSummary"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "JobsControlRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "jobs.control"
+            },
+            "params": {
+              "$ref": "#/$defs/JobsControlParams"
+            }
+          }
+        }
+      ]
+    },
+    "JobsControlResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/JobsControlResult"
+            }
+          }
+        }
+      ]
+    },
+    "JobsVerifyParams": {
+      "description": "Parameters of jobs.verify (MVP).",
+      "type": "object",
+      "required": [
+        "job_id"
+      ],
+      "properties": {
+        "job_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+        },
+        "expected_sha256": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        }
+      }
+    },
+    "JobsVerifyResult": {
+      "description": "Result of jobs.verify.",
+      "type": "object",
+      "required": [
+        "sha256",
+        "blake3",
+        "size_bytes",
+        "matches_recorded",
+        "quarantined"
+      ],
+      "properties": {
+        "sha256": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "blake3": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "size_bytes": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Bytes"
+        },
+        "detected_mime": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "matches_recorded": {
+          "type": "boolean"
+        },
+        "matches_expected": {
+          "type": "boolean"
+        },
+        "quarantined": {
+          "type": "boolean"
+        },
+        "quarantine_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/domain#/$defs/QuarantineReason"
+          }
+        }
+      }
+    },
+    "JobsVerifyRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "jobs.verify"
+            },
+            "params": {
+              "$ref": "#/$defs/JobsVerifyParams"
+            }
+          }
+        }
+      ]
+    },
+    "JobsVerifyResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/JobsVerifyResult"
+            }
+          }
+        }
+      ]
+    },
+    "EventsSubscribeParams": {
+      "description": "Parameters of events.subscribe (MVP).",
+      "type": "object",
+      "properties": {
+        "since_seq": {
+          "description": "Replay durable events with a larger seq, then go live. Absent: live only.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "types": {
+          "description": "Event names to deliver. Absent: all events visible to the caller.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "job_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+          },
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "run_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RunId"
+        },
+        "include_progress": {
+          "type": "boolean"
+        },
+        "progress_interval_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000
+        }
+      }
+    },
+    "EventsSubscribeResult": {
+      "description": "Result of events.subscribe.",
+      "type": "object",
+      "required": [
+        "subscription_id",
+        "head_seq",
+        "replay_count",
+        "replay_truncated"
+      ],
+      "properties": {
+        "subscription_id": {
+          "$ref": "#/$defs/SubscriptionId"
+        },
+        "head_seq": {
+          "$ref": "#/$defs/EventSeqOrZero"
+        },
+        "replay_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "replay_truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "EventsSubscribeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "events.subscribe"
+            },
+            "params": {
+              "$ref": "#/$defs/EventsSubscribeParams"
+            }
+          }
+        }
+      ]
+    },
+    "EventsSubscribeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/EventsSubscribeResult"
+            }
+          }
+        }
+      ]
+    },
+    "EventsUnsubscribeParams": {
+      "description": "Parameters of events.unsubscribe (MVP).",
+      "type": "object",
+      "required": [
+        "subscription_id"
+      ],
+      "properties": {
+        "subscription_id": {
+          "$ref": "#/$defs/SubscriptionId"
+        }
+      }
+    },
+    "EventsUnsubscribeResult": {
+      "description": "Result of events.unsubscribe.",
+      "type": "object",
+      "required": [
+        "removed"
+      ],
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "EventsUnsubscribeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "events.unsubscribe"
+            },
+            "params": {
+              "$ref": "#/$defs/EventsUnsubscribeParams"
+            }
+          }
+        }
+      ]
+    },
+    "EventsUnsubscribeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/EventsUnsubscribeResult"
+            }
+          }
+        }
+      ]
+    },
+    "SessionsListParams": {
+      "description": "Parameters of sessions.list (MVP).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageParams"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "origin": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
+            },
+            "include_inactive": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "SessionsListResult": {
+      "description": "Grants never contain cookies.",
+      "type": "object",
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/domain#/$defs/SessionGrant"
+          }
+        },
+        "next_cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "SessionsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "sessions.list"
+            },
+            "params": {
+              "$ref": "#/$defs/SessionsListParams"
+            }
+          }
+        }
+      ]
+    },
+    "SessionsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SessionsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "SessionsRequestParams": {
+      "description": "Parameters of sessions.request (MVP).",
+      "type": "object",
+      "required": [
+        "origin",
+        "scope",
+        "reason"
+      ],
+      "properties": {
+        "origin": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
+        },
+        "scope": {
+          "description": "A suggestion; the human chooses. never cannot be requested.",
+          "$ref": "#/$defs/GrantScopeHint"
+        },
+        "reason": {
+          "description": "Shown to the human as agent_says. Untrusted.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        },
+        "job_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+        },
+        "run_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RunId"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "SessionsRequestResult": {
+      "description": "Result of sessions.request.",
+      "type": "object",
+      "required": [
+        "status",
+        "replayed"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "already_granted",
+            "pending_user_approval",
+            "denied"
+          ]
+        },
+        "grant_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/GrantId"
+        },
+        "approval_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId"
+        },
+        "expires_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "SessionsRequestRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "sessions.request"
+            },
+            "params": {
+              "$ref": "#/$defs/SessionsRequestParams"
+            }
+          }
+        }
+      ]
+    },
+    "SessionsRequestResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SessionsRequestResult"
+            }
+          }
+        }
+      ]
+    },
+    "SessionsRevokeParams": {
+      "description": "Parameters of sessions.revoke (MVP).",
+      "type": "object",
+      "required": [
+        "grant_id",
+        "surface"
+      ],
+      "properties": {
+        "grant_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/GrantId"
+        },
+        "surface": {
+          "$ref": "#/$defs/HumanChannel"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "SessionsRevokeResult": {
+      "description": "Result of sessions.revoke.",
+      "type": "object",
+      "required": [
+        "grant",
+        "replayed"
+      ],
+      "properties": {
+        "grant": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/SessionGrant"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "SessionsRevokeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "sessions.revoke"
+            },
+            "params": {
+              "$ref": "#/$defs/SessionsRevokeParams"
+            }
+          }
+        }
+      ]
+    },
+    "SessionsRevokeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SessionsRevokeResult"
+            }
+          }
+        }
+      ]
+    },
+    "ApprovalsListParams": {
+      "description": "Parameters of approvals.list (MVP).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageParams"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "description": "Absent: pending.",
+              "$ref": "#/$defs/ApprovalState"
+            },
+            "kind": {
+              "$ref": "https://zeus.invalid/schema/domain#/$defs/ApprovalKind"
+            },
+            "origin": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
+            },
+            "requested_by": {
+              "description": "A credential id or daemon. Human-capable callers only; others see their own approvals anyway.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CredentialId"
+                },
+                {
+                  "const": "daemon"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ApprovalsListResult": {
+      "description": "Ordered by expires_at, soonest first (07 section 11.3).",
+      "type": "object",
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApprovalView"
+          }
+        },
+        "next_cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ApprovalsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "approvals.list"
+            },
+            "params": {
+              "$ref": "#/$defs/ApprovalsListParams"
+            }
+          }
+        }
+      ]
+    },
+    "ApprovalsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ApprovalsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "ApprovalsGetParams": {
+      "description": "Parameters of approvals.get (MVP).",
+      "type": "object",
+      "required": [
+        "approval_id"
+      ],
+      "properties": {
+        "approval_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId"
+        }
+      }
+    },
+    "ApprovalsGetResult": {
+      "description": "Result of approvals.get.",
+      "type": "object",
+      "required": [
+        "approval"
+      ],
+      "properties": {
+        "approval": {
+          "$ref": "#/$defs/ApprovalView"
+        },
+        "decision_record": {
+          "description": "Human-capable callers, decided approvals only (07 section 11.3).",
+          "$ref": "https://zeus.invalid/schema/approvals.v1#/$defs/DecisionRecord"
+        }
+      }
+    },
+    "ApprovalsGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "approvals.get"
+            },
+            "params": {
+              "$ref": "#/$defs/ApprovalsGetParams"
+            }
+          }
+        }
+      ]
+    },
+    "ApprovalsGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ApprovalsGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "ApprovalsDecideParams": {
+      "$ref": "https://zeus.invalid/schema/approvals.v1#/$defs/ApprovalDecision"
+    },
+    "ApprovalsDecideResult": {
+      "description": "Result of approvals.decide.",
+      "type": "object",
+      "required": [
+        "approval",
+        "replayed"
+      ],
+      "properties": {
+        "approval": {
+          "$ref": "#/$defs/ApprovalView"
+        },
+        "grant": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/SessionGrant"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "ApprovalsDecideRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "approvals.decide"
+            },
+            "params": {
+              "$ref": "#/$defs/ApprovalsDecideParams"
+            }
+          }
+        }
+      ]
+    },
+    "ApprovalsDecideResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ApprovalsDecideResult"
+            }
+          }
+        }
+      ]
+    },
+    "FilesListParams": {
+      "description": "Parameters of files.list (MVP).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageParams"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "dir": {
+              "$ref": "#/$defs/PathText"
+            },
+            "recursive": {
+              "type": "boolean"
+            },
+            "include_partial": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "FilesListResult": {
+      "description": "Result of files.list.",
+      "type": "object",
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileEntry"
+          }
+        },
+        "next_cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "FilesListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "files.list"
+            },
+            "params": {
+              "$ref": "#/$defs/FilesListParams"
+            }
+          }
+        }
+      ]
+    },
+    "FilesListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/FilesListResult"
+            }
+          }
+        }
+      ]
+    },
+    "FilesRootsRegisterParams": {
+      "description": "Parameters of files.roots.register (MVP).",
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/PathText"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "FilesRootsRegisterResult": {
+      "description": "Result of files.roots.register.",
+      "type": "object",
+      "required": [
+        "root",
+        "created",
+        "replayed"
+      ],
+      "properties": {
+        "root": {
+          "$ref": "#/$defs/ServiceRoot"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "FilesRootsRegisterRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "files.roots.register"
+            },
+            "params": {
+              "$ref": "#/$defs/FilesRootsRegisterParams"
+            }
+          }
+        }
+      ]
+    },
+    "FilesRootsRegisterResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/FilesRootsRegisterResult"
+            }
+          }
+        }
+      ]
+    },
+    "FilesOrganizeParams": {
+      "description": "Parameters of files.organize (later).",
+      "type": "object",
+      "required": [
+        "dir",
+        "rules"
+      ],
+      "properties": {
+        "dir": {
+          "$ref": "#/$defs/PathText"
+        },
+        "rules": {
+          "description": "Rule set (spec 08). Untrusted.",
+          "type": "object"
+        },
+        "dry_run": {
+          "description": "Default true.",
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "FilesOrganizeResult": {
+      "description": "Result of files.organize.",
+      "type": "object",
+      "required": [
+        "steps",
+        "applied",
+        "replayed"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileStep"
+          }
+        },
+        "applied": {
+          "type": "boolean"
+        },
+        "approval_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "FilesOrganizeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "files.organize"
+            },
+            "params": {
+              "$ref": "#/$defs/FilesOrganizeParams"
+            }
+          }
+        }
+      ]
+    },
+    "FilesOrganizeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/FilesOrganizeResult"
+            }
+          }
+        }
+      ]
+    },
+    "FilesConvertParams": {
+      "description": "Parameters of files.convert (later).",
+      "type": "object",
+      "required": [
+        "inputs",
+        "target"
+      ],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PathText"
+          },
+          "minItems": 1,
+          "maxItems": 100
+        },
+        "target": {
+          "description": "Target extension without the dot.",
+          "type": "string",
+          "pattern": "^[a-z0-9]{1,16}$"
+        },
+        "dry_run": {
+          "description": "Default true.",
+          "type": "boolean"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "FilesConvertResult": {
+      "description": "Result of files.convert.",
+      "type": "object",
+      "required": [
+        "steps",
+        "applied",
+        "replayed"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileStep"
+          }
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "applied": {
+          "type": "boolean"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "FilesConvertRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "files.convert"
+            },
+            "params": {
+              "$ref": "#/$defs/FilesConvertParams"
+            }
+          }
+        }
+      ]
+    },
+    "FilesConvertResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/FilesConvertResult"
+            }
+          }
+        }
+      ]
+    },
+    "FilesUndoParams": {
+      "description": "Parameters of files.undo (later).",
+      "type": "object",
+      "required": [
+        "operation_id"
+      ],
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "FilesUndoResult": {
+      "description": "Result of files.undo. The inverse steps are planned now and run only after a person approves the destructive_op approval (07 section 4.1).",
+      "type": "object",
+      "required": [
+        "steps",
+        "replayed"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileStep"
+          }
+        },
+        "approval_id": {
+          "description": "The destructive_op approval for the undo; absent when there is nothing to revert.",
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId"
+        },
+        "operation_id": {
+          "description": "The undo's own operation.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "FilesUndoRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "files.undo"
+            },
+            "params": {
+              "$ref": "#/$defs/FilesUndoParams"
+            }
+          }
+        }
+      ]
+    },
+    "FilesUndoResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/FilesUndoResult"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsPlanParams": {
+      "description": "Parameters of workflows.plan (later).",
+      "type": "object",
+      "required": [
+        "goal",
+        "start_urls"
+      ],
+      "properties": {
+        "goal": {
+          "description": "Untrusted; recorded, never interpreted.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "start_urls": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/common#/$defs/Url"
+          },
+          "minItems": 1,
+          "maxItems": 20
+        },
+        "session_origin": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
+        },
+        "candidate": {
+          "description": "A candidate plan (spec 08).",
+          "type": "object"
+        },
+        "plan_id": {
+          "$ref": "#/$defs/PlanId"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "draft": {
+          "$ref": "#/$defs/WorkflowDraftRequest"
+        }
+      }
+    },
+    "WorkflowsPlanResult": {
+      "description": "Result of workflows.plan.",
+      "type": "object",
+      "required": [
+        "plan_id",
+        "samples",
+        "plan_schema",
+        "diagnostics",
+        "replayed"
+      ],
+      "properties": {
+        "plan_id": {
+          "$ref": "#/$defs/PlanId"
+        },
+        "samples": {
+          "description": "Page samples (spec 08). Untrusted content.",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "plan_schema": {
+          "type": "object"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "plan": {
+          "type": "object"
+        },
+        "plan_hash": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        },
+        "draft": {
+          "$ref": "#/$defs/WorkflowDraftInfo"
+        }
+      }
+    },
+    "WorkflowsPlanRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "workflows.plan"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkflowsPlanParams"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsPlanResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/WorkflowsPlanResult"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsDryRunParams": {
+      "description": "Parameters of workflows.dry_run (later).",
+      "type": "object",
+      "required": [
+        "plan_id",
+        "sample_items"
+      ],
+      "properties": {
+        "plan_id": {
+          "$ref": "#/$defs/PlanId"
+        },
+        "sample_items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "WorkflowsDryRunResult": {
+      "description": "DryRunReport (spec 08).",
+      "type": "object"
+    },
+    "WorkflowsDryRunRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "workflows.dry_run"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkflowsDryRunParams"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsDryRunResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/WorkflowsDryRunResult"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsRunParams": {
+      "description": "Parameters of workflows.run (later).",
+      "type": "object",
+      "required": [
+        "plan_id",
+        "plan_hash"
+      ],
+      "properties": {
+        "plan_id": {
+          "$ref": "#/$defs/PlanId"
+        },
+        "plan_hash": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "WorkflowsRunResult": {
+      "description": "Result of workflows.run.",
+      "type": "object",
+      "required": [
+        "run_id",
+        "status",
+        "replayed"
+      ],
+      "properties": {
+        "run_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RunId"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "approval_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "WorkflowsRunRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "workflows.run"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkflowsRunParams"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsRunResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/WorkflowsRunResult"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsGetParams": {
+      "description": "Parameters of workflows.get (later).",
+      "type": "object",
+      "required": [
+        "run_id"
+      ],
+      "properties": {
+        "run_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RunId"
+        }
+      }
+    },
+    "WorkflowsGetResult": {
+      "description": "RunReport (spec 08).",
+      "type": "object"
+    },
+    "WorkflowsGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "workflows.get"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkflowsGetParams"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/WorkflowsGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsListParams": {
+      "description": "Parameters of workflows.list (later).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageParams"
+        },
+        {
+          "type": "object",
+          "properties": {}
+        }
+      ]
+    },
+    "WorkflowsListResult": {
+      "description": "RunReports (spec 08).",
+      "type": "object",
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "next_cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "WorkflowsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "workflows.list"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkflowsListParams"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/WorkflowsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsControlParams": {
+      "description": "Parameters of workflows.control (later).",
+      "type": "object",
+      "required": [
+        "run_id",
+        "action"
+      ],
+      "properties": {
+        "run_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RunId"
+        },
+        "action": {
+          "enum": [
+            "pause",
+            "resume",
+            "cancel"
+          ]
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "WorkflowsControlResult": {
+      "description": "Result of workflows.control.",
+      "type": "object",
+      "required": [
+        "run",
+        "replayed"
+      ],
+      "properties": {
+        "run": {
+          "type": "object"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "WorkflowsControlRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "workflows.control"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkflowsControlParams"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsControlResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/WorkflowsControlResult"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsManifestParams": {
+      "description": "Parameters of workflows.manifest (later).",
+      "type": "object",
+      "required": [
+        "run_id",
+        "format"
+      ],
+      "properties": {
+        "run_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/RunId"
+        },
+        "format": {
+          "enum": [
+            "jsonl",
+            "csv",
+            "croissant"
+          ]
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "WorkflowsManifestResult": {
+      "description": "Result of workflows.manifest.",
+      "type": "object",
+      "required": [
+        "path",
+        "records",
+        "replayed"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/PathText"
+        },
+        "records": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 524288,
+          "description": "Redacted UTF-8 export included only when at most 512 KiB."
+        },
+        "sha256": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+        }
+      }
+    },
+    "WorkflowsManifestRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "workflows.manifest"
+            },
+            "params": {
+              "$ref": "#/$defs/WorkflowsManifestParams"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowsManifestResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/WorkflowsManifestResult"
+            }
+          }
+        }
+      ]
+    },
+    "AuditTailParams": {
+      "description": "Parameters of audit.tail (MVP).",
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "Default 20, at most 100.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "after_seq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "AuditTailResult": {
+      "description": "Result of audit.tail.",
+      "type": "object",
+      "required": [
+        "records"
+      ],
+      "properties": {
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/audit-record.v1#/$defs/AuditRecord"
+          },
+          "maxItems": 100
+        },
+        "head": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AuditHead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "AuditTailRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "audit.tail"
+            },
+            "params": {
+              "$ref": "#/$defs/AuditTailParams"
+            }
+          }
+        }
+      ]
+    },
+    "AuditTailResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/AuditTailResult"
+            }
+          }
+        }
+      ]
+    },
+    "AuditVerifyParams": {
+      "description": "Parameters of audit.verify (MVP).",
+      "type": "object",
+      "properties": {
+        "from_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "AuditVerifyResult": {
+      "description": "Result of audit.verify.",
+      "type": "object",
+      "required": [
+        "ok",
+        "records_checked"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "records_checked": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "first_broken_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "problem": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "torn_or_malformed",
+                "seq_gap",
+                "prev_mismatch",
+                "hash_mismatch",
+                "bad_genesis",
+                "rotation",
+                "tail_truncated",
+                "anchor_mismatch",
+                "missing_file"
+              ]
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "head": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AuditHead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "AuditVerifyRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "audit.verify"
+            },
+            "params": {
+              "$ref": "#/$defs/AuditVerifyParams"
+            }
+          }
+        }
+      ]
+    },
+    "AuditVerifyResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/AuditVerifyResult"
+            }
+          }
+        }
+      ]
+    },
+    "ConfigGetParams": {
+      "description": "Parameters of config.get (MVP).",
+      "type": "object",
+      "properties": {
+        "key": {
+          "description": "A dotted key or a prefix ending in a component; absent: everything.",
+          "$ref": "#/$defs/ConfigKey"
+        }
+      }
+    },
+    "ConfigGetResult": {
+      "description": "Result of config.get.",
+      "type": "object",
+      "required": [
+        "values"
+      ],
+      "properties": {
+        "values": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/ConfigKey"
+          },
+          "additionalProperties": true
+        },
+        "redacted_keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConfigKey"
+          }
+        }
+      }
+    },
+    "ConfigGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "config.get"
+            },
+            "params": {
+              "$ref": "#/$defs/ConfigGetParams"
+            }
+          }
+        }
+      ]
+    },
+    "ConfigGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ConfigGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "ConfigSetParams": {
+      "description": "Parameters of config.set (MVP).",
+      "type": "object",
+      "required": [
+        "key",
+        "value",
+        "surface"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/ConfigKey"
+        },
+        "value": {
+          "description": "Any JSON value without floating-point numbers."
+        },
+        "surface": {
+          "$ref": "#/$defs/HumanChannel"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "ConfigSetResult": {
+      "description": "Result of config.set.",
+      "type": "object",
+      "required": [
+        "applied",
+        "restart_required",
+        "replayed"
+      ],
+      "properties": {
+        "previous": {},
+        "applied": {
+          "type": "boolean"
+        },
+        "restart_required": {
+          "type": "boolean"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "ConfigSetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "config.set"
+            },
+            "params": {
+              "$ref": "#/$defs/ConfigSetParams"
+            }
+          }
+        }
+      ]
+    },
+    "ConfigSetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ConfigSetResult"
+            }
+          }
+        }
+      ]
+    },
+    "DoctorRunParams": {
+      "description": "Parameters of doctor.run (MVP).",
+      "type": "object",
+      "properties": {}
+    },
+    "DoctorRunResult": {
+      "description": "Result of doctor.run.",
+      "type": "object",
+      "required": [
+        "checks"
+      ],
+      "properties": {
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DoctorCheck"
+          }
+        }
+      }
+    },
+    "DoctorRunRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "doctor.run"
+            },
+            "params": {
+              "$ref": "#/$defs/DoctorRunParams"
+            }
+          }
+        }
+      ]
+    },
+    "DoctorRunResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/DoctorRunResult"
+            }
+          }
+        }
+      ]
+    },
+    "LlmStatusParams": {
+      "description": "Parameters of llm.status (later).",
+      "type": "object",
+      "properties": {}
+    },
+    "LlmStatusResult": {
+      "description": "Result of llm.status.",
+      "type": "object",
+      "required": [
+        "rungs",
+        "privacy",
+        "spend_caps",
+        "spent_day_micro_usd",
+        "spent_month_micro_usd"
+      ],
+      "properties": {
+        "rungs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RungStatus"
+          }
+        },
+        "privacy": {
+          "enum": [
+            "metadata_only",
+            "local_only",
+            "content"
+          ]
+        },
+        "spend_caps": {
+          "$ref": "#/$defs/SpendCaps"
+        },
+        "spent_day_micro_usd": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "spent_month_micro_usd": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "policy_sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "LlmStatusRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "llm.status"
+            },
+            "params": {
+              "$ref": "#/$defs/LlmStatusParams"
+            }
+          }
+        }
+      ]
+    },
+    "LlmStatusResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/LlmStatusResult"
+            }
+          }
+        }
+      ]
+    },
+    "LlmConfigureParams": {
+      "description": "Human-only local model configuration. Download-only remains the default; enabling a model never grants download or session authority.",
+      "type": "object",
+      "properties": {
+        "privacy": {
+          "enum": [
+            "metadata_only",
+            "local_only",
+            "content"
+          ]
+        },
+        "allow_experimental": {
+          "type": "boolean"
+        },
+        "spend_caps": {
+          "$ref": "#/$defs/SpendCaps"
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "api_key": {
+          "x-zeus-secret": true,
+          "description": "Goes straight to the OS keyring; never echoed, logged or stored elsewhere. An empty string deletes this provider key.",
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 4096
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "adapter": {
+          "$ref": "#/$defs/HttpProviderConfig"
+        }
+      }
+    },
+    "LlmConfigureResult": {
+      "description": "Result of llm.configure.",
+      "type": "object",
+      "required": [
+        "rungs",
+        "replayed"
+      ],
+      "properties": {
+        "rungs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RungStatus"
+          }
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "LlmConfigureRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "llm.configure"
+            },
+            "params": {
+              "$ref": "#/$defs/LlmConfigureParams"
+            }
+          }
+        }
+      ]
+    },
+    "LlmConfigureResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/LlmConfigureResult"
+            }
+          }
+        }
+      ]
+    },
+    "ClientsListParams": {
+      "description": "Parameters of clients.list (MVP).",
+      "type": "object",
+      "properties": {
+        "include_revoked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ClientsListResult": {
+      "description": "Result of clients.list.",
+      "type": "object",
+      "required": [
+        "clients"
+      ],
+      "properties": {
+        "clients": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClientRecord"
+          }
+        }
+      }
+    },
+    "ClientsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "clients.list"
+            },
+            "params": {
+              "$ref": "#/$defs/ClientsListParams"
+            }
+          }
+        }
+      ]
+    },
+    "ClientsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ClientsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "ClientsAddParams": {
+      "description": "Parameters of clients.add (MVP).",
+      "type": "object",
+      "required": [
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+        },
+        "kind": {
+          "description": "Only agent and service credentials are created through the API.",
+          "enum": [
+            "agent",
+            "service"
+          ]
+        },
+        "role": {
+          "$ref": "#/$defs/ClientRole"
+        },
+        "permissions": {
+          "description": "Narrowing only (section 7.3).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Permission"
+          },
+          "uniqueItems": true
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "ClientsAddResult": {
+      "description": "Result of clients.add.",
+      "type": "object",
+      "required": [
+        "client",
+        "credential_file",
+        "replayed"
+      ],
+      "properties": {
+        "client": {
+          "$ref": "#/$defs/ClientRecord"
+        },
+        "credential_file": {
+          "description": "Absolute path of the owner-only token file the daemon wrote. The token itself is never returned.",
+          "$ref": "#/$defs/PathText"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "ClientsAddRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "clients.add"
+            },
+            "params": {
+              "$ref": "#/$defs/ClientsAddParams"
+            }
+          }
+        }
+      ]
+    },
+    "ClientsAddResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ClientsAddResult"
+            }
+          }
+        }
+      ]
+    },
+    "ClientsRevokeParams": {
+      "description": "Parameters of clients.revoke (MVP).",
+      "type": "object",
+      "required": [
+        "credential_id"
+      ],
+      "properties": {
+        "credential_id": {
+          "$ref": "#/$defs/CredentialId"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "ClientsRevokeResult": {
+      "description": "Result of clients.revoke.",
+      "type": "object",
+      "required": [
+        "client",
+        "connections_closed",
+        "replayed"
+      ],
+      "properties": {
+        "client": {
+          "$ref": "#/$defs/ClientRecord"
+        },
+        "connections_closed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "ClientsRevokeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "clients.revoke"
+            },
+            "params": {
+              "$ref": "#/$defs/ClientsRevokeParams"
+            }
+          }
+        }
+      ]
+    },
+    "ClientsRevokeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ClientsRevokeResult"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsGetParams": {
+      "description": "Parameters of artifacts.get (later).",
+      "type": "object",
+      "required": [
+        "artifact_id"
+      ],
+      "properties": {
+        "artifact_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ArtifactId"
+        }
+      }
+    },
+    "ArtifactsGetResult": {
+      "description": "Result of artifacts.get.",
+      "type": "object",
+      "required": [
+        "artifact"
+      ],
+      "properties": {
+        "artifact": {
+          "description": "Export form (13 section 10.1).",
+          "$ref": "https://zeus.invalid/schema/artifact.v1#/$defs/Artifact"
+        }
+      }
+    },
+    "ArtifactsGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "artifacts.get"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsGetParams"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsListParams": {
+      "description": "Parameters of artifacts.list (later).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageParams"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "blake3": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+            },
+            "sha256": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/Hex256"
+            },
+            "job_id": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/JobId"
+            },
+            "run_id": {
+              "$ref": "https://zeus.invalid/schema/common#/$defs/RunId"
+            },
+            "state": {
+              "enum": [
+                "active",
+                "deleted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsListResult": {
+      "description": "Export forms, newest first.",
+      "type": "object",
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/artifact.v1#/$defs/Artifact"
+          }
+        },
+        "next_cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ArtifactsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "artifacts.list"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsListParams"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsLineageParams": {
+      "description": "Parameters of artifacts.lineage (later).",
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "direction"
+      ],
+      "properties": {
+        "artifact_id": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ArtifactId"
+        },
+        "direction": {
+          "enum": [
+            "ancestors",
+            "descendants"
+          ]
+        },
+        "max_depth": {
+          "description": "Default 8, at most 64.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "max_nodes": {
+          "description": "Default 100, at most 500.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      }
+    },
+    "ArtifactsLineageResult": {
+      "description": "Result of artifacts.lineage.",
+      "type": "object",
+      "required": [
+        "nodes",
+        "truncated"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LineageNode"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ArtifactsLineageRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "artifacts.lineage"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsLineageParams"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsLineageResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsLineageResult"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsIngestParams": {
+      "description": "Parameters of artifacts.ingest (later).",
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "description": "A file inside a write root the caller may use.",
+          "$ref": "#/$defs/PathText"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "parents": {
+          "type": "array",
+          "items": {
+            "$ref": "https://zeus.invalid/schema/artifact.v1#/$defs/ParentRef"
+          },
+          "maxItems": 1024
+        },
+        "operation": {
+          "$ref": "https://zeus.invalid/schema/artifact.v1#/$defs/Operation"
+        },
+        "metadata": {
+          "$ref": "https://zeus.invalid/schema/artifact.v1#/$defs/Metadata"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      }
+    },
+    "ArtifactsIngestResult": {
+      "description": "Result of artifacts.ingest.",
+      "type": "object",
+      "required": [
+        "artifact",
+        "created",
+        "replayed"
+      ],
+      "properties": {
+        "artifact": {
+          "description": "Export form of the new or existing record.",
+          "$ref": "https://zeus.invalid/schema/artifact.v1#/$defs/Artifact"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "replayed": {
+          "description": "True when the result was returned from the idempotency store instead of executing the call (section 12).",
+          "type": "boolean"
+        }
+      }
+    },
+    "ArtifactsIngestRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "artifacts.ingest"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsIngestParams"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsIngestResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsIngestResult"
+            }
+          }
+        }
+      ]
+    },
+    "Request": {
+      "description": "Any request a client may send (section 9).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/DaemonHelloRequest"
+        },
+        {
+          "$ref": "#/$defs/DaemonAuthenticateRequest"
+        },
+        {
+          "$ref": "#/$defs/DaemonPingRequest"
+        },
+        {
+          "$ref": "#/$defs/DaemonStatusRequest"
+        },
+        {
+          "$ref": "#/$defs/DaemonShutdownRequest"
+        },
+        {
+          "$ref": "#/$defs/DaemonKillSwitchRequest"
+        },
+        {
+          "$ref": "#/$defs/JobsProbeRequest"
+        },
+        {
+          "$ref": "#/$defs/JobsEnqueueRequest"
+        },
+        {
+          "$ref": "#/$defs/JobsListRequest"
+        },
+        {
+          "$ref": "#/$defs/JobsGetRequest"
+        },
+        {
+          "$ref": "#/$defs/JobsWaitRequest"
+        },
+        {
+          "$ref": "#/$defs/JobsControlRequest"
+        },
+        {
+          "$ref": "#/$defs/JobsVerifyRequest"
+        },
+        {
+          "$ref": "#/$defs/EventsSubscribeRequest"
+        },
+        {
+          "$ref": "#/$defs/EventsUnsubscribeRequest"
+        },
+        {
+          "$ref": "#/$defs/SessionsListRequest"
+        },
+        {
+          "$ref": "#/$defs/SessionsRequestRequest"
+        },
+        {
+          "$ref": "#/$defs/SessionsRevokeRequest"
+        },
+        {
+          "$ref": "#/$defs/ApprovalsListRequest"
+        },
+        {
+          "$ref": "#/$defs/ApprovalsGetRequest"
+        },
+        {
+          "$ref": "#/$defs/ApprovalsDecideRequest"
+        },
+        {
+          "$ref": "#/$defs/FilesListRequest"
+        },
+        {
+          "$ref": "#/$defs/FilesRootsRegisterRequest"
+        },
+        {
+          "$ref": "#/$defs/FilesOrganizeRequest"
+        },
+        {
+          "$ref": "#/$defs/FilesConvertRequest"
+        },
+        {
+          "$ref": "#/$defs/FilesUndoRequest"
+        },
+        {
+          "$ref": "#/$defs/WorkflowsPlanRequest"
+        },
+        {
+          "$ref": "#/$defs/WorkflowsDryRunRequest"
+        },
+        {
+          "$ref": "#/$defs/WorkflowsRunRequest"
+        },
+        {
+          "$ref": "#/$defs/WorkflowsGetRequest"
+        },
+        {
+          "$ref": "#/$defs/WorkflowsListRequest"
+        },
+        {
+          "$ref": "#/$defs/WorkflowsControlRequest"
+        },
+        {
+          "$ref": "#/$defs/WorkflowsManifestRequest"
+        },
+        {
+          "$ref": "#/$defs/AuditTailRequest"
+        },
+        {
+          "$ref": "#/$defs/AuditVerifyRequest"
+        },
+        {
+          "$ref": "#/$defs/ConfigGetRequest"
+        },
+        {
+          "$ref": "#/$defs/ConfigSetRequest"
+        },
+        {
+          "$ref": "#/$defs/DoctorRunRequest"
+        },
+        {
+          "$ref": "#/$defs/LlmStatusRequest"
+        },
+        {
+          "$ref": "#/$defs/LlmConfigureRequest"
+        },
+        {
+          "$ref": "#/$defs/ClientsListRequest"
+        },
+        {
+          "$ref": "#/$defs/ClientsAddRequest"
+        },
+        {
+          "$ref": "#/$defs/ClientsRevokeRequest"
+        },
+        {
+          "$ref": "#/$defs/ArtifactsGetRequest"
+        },
+        {
+          "$ref": "#/$defs/ArtifactsListRequest"
+        },
+        {
+          "$ref": "#/$defs/ArtifactsLineageRequest"
+        },
+        {
+          "$ref": "#/$defs/ArtifactsIngestRequest"
+        },
+        {
+          "$ref": "#/$defs/LlmAuthStartRequest"
+        },
+        {
+          "$ref": "#/$defs/LlmAuthStatusRequest"
+        },
+        {
+          "$ref": "#/$defs/LlmAuthCancelRequest"
+        },
+        {
+          "$ref": "#/$defs/LlmAuthSignOutRequest"
+        }
+      ]
+    },
+    "EventsEventParams": {
+      "type": "object",
+      "required": [
+        "subscription_id",
+        "event"
+      ],
+      "properties": {
+        "subscription_id": {
+          "$ref": "#/$defs/SubscriptionId"
+        },
+        "event": {
+          "$ref": "https://zeus.invalid/schema/domain#/$defs/Event"
+        }
+      }
+    },
+    "EventsLaggedParams": {
+      "type": "object",
+      "required": [
+        "subscription_id",
+        "dropped",
+        "resume_from_seq"
+      ],
+      "properties": {
+        "subscription_id": {
+          "$ref": "#/$defs/SubscriptionId"
+        },
+        "dropped": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "resume_from_seq": {
+          "description": "Pass as since_seq to a new events.subscribe to continue without a gap.",
+          "$ref": "#/$defs/EventSeqOrZero"
+        }
+      }
+    },
+    "DaemonStoppingParams": {
+      "type": "object",
+      "required": [
+        "reason",
+        "grace_ms"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "grace_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        }
+      }
+    },
+    "NmFrameToDaemonParams": {
+      "type": "object",
+      "required": [
+        "frame"
+      ],
+      "properties": {
+        "frame": {
+          "$ref": "https://zeus.invalid/schema/native-messaging.v1#/$defs/ExtensionToDaemonMessage"
+        },
+        "source": {
+          "description": "extension (default) or host for frames the host synthesises (section 9.12).",
+          "enum": [
+            "extension",
+            "host"
+          ]
+        }
+      }
+    },
+    "NmFrameToHostParams": {
+      "type": "object",
+      "required": [
+        "frame"
+      ],
+      "properties": {
+        "frame": {
+          "$ref": "https://zeus.invalid/schema/native-messaging.v1#/$defs/DaemonToExtensionMessage"
+        }
+      }
+    },
+    "EventsEventNotification": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/NotificationBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "events.event"
+            },
+            "params": {
+              "$ref": "#/$defs/EventsEventParams"
+            }
+          }
+        }
+      ]
+    },
+    "EventsLaggedNotification": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/NotificationBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "events.lagged"
+            },
+            "params": {
+              "$ref": "#/$defs/EventsLaggedParams"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonStoppingNotification": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/NotificationBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "daemon.stopping"
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonStoppingParams"
+            }
+          }
+        }
+      ]
+    },
+    "NmFrameToDaemonNotification": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/NotificationBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "nm.frame"
+            },
+            "params": {
+              "$ref": "#/$defs/NmFrameToDaemonParams"
+            }
+          }
+        }
+      ]
+    },
+    "NmFrameToHostNotification": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/NotificationBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "nm.frame"
+            },
+            "params": {
+              "$ref": "#/$defs/NmFrameToHostParams"
+            }
+          }
+        }
+      ]
+    },
+    "ServerNotification": {
+      "description": "Any notification the daemon sends.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/EventsEventNotification"
+        },
+        {
+          "$ref": "#/$defs/EventsLaggedNotification"
+        },
+        {
+          "$ref": "#/$defs/DaemonStoppingNotification"
+        },
+        {
+          "$ref": "#/$defs/NmFrameToHostNotification"
+        }
+      ]
+    },
+    "ClientNotification": {
+      "description": "The only notification a client may send: nm.frame from a native_host connection.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/NmFrameToDaemonNotification"
+        }
+      ]
+    },
+    "ModelPricing": {
+      "type": "object",
+      "properties": {
+        "input_micro_usd_per_million": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "output_micro_usd_per_million": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_input_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "input_micro_usd_per_million",
+        "output_micro_usd_per_million",
+        "max_input_tokens"
+      ]
+    },
+    "HttpProviderConfig": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "maxLength": 64
+        },
+        "endpoint": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 4096,
+          "description": "Complete method URL. Credentials, query strings, fragments and non-loopback cleartext are refused."
+        },
+        "dialect": {
+          "enum": [
+            "open_ai_responses",
+            "chat_completions",
+            "anthropic_messages",
+            "ollama"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "pricing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelPricing"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        }
+      },
+      "required": [
+        "kind",
+        "endpoint",
+        "dialect",
+        "model",
+        "pricing",
+        "timeout_seconds"
+      ]
+    },
+    "LlmAuthStartParams": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "enum": [
+            "chatgpt_oauth",
+            "openrouter_oauth"
+          ]
+        },
+        "account_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider"
+      ]
+    },
+    "LlmAuthStartResult": {
+      "type": "object",
+      "properties": {
+        "flow_id": {
+          "type": "string"
+        },
+        "authorization_url": {
+          "type": "string",
+          "format": "uri",
+          "x-zeus-secret": true,
+          "description": "One-use browser sign-in URL. Never log or expose to agent clients."
+        },
+        "expires_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "flow_id",
+        "authorization_url",
+        "expires_at"
+      ]
+    },
+    "LlmAuthStatusParams": {
+      "type": "object",
+      "properties": {
+        "flow_id": {
+          "type": "string"
+        }
+      }
+    },
+    "LlmAuthFlow": {
+      "type": "object",
+      "properties": {
+        "flow_id": {
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "chatgpt_oauth",
+            "openrouter_oauth"
+          ]
+        },
+        "state": {
+          "enum": [
+            "waiting",
+            "connected",
+            "failed",
+            "canceled",
+            "expired"
+          ]
+        },
+        "account_id": {
+          "type": "string"
+        },
+        "expires_at": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "flow_id",
+        "provider",
+        "state",
+        "expires_at"
+      ]
+    },
+    "LlmAccount": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string"
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_enabled": {
+          "type": "boolean"
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "account_id",
+        "email",
+        "plan_enabled",
+        "active"
+      ]
+    },
+    "LlmAuthStatusResult": {
+      "type": "object",
+      "properties": {
+        "flow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LlmAuthFlow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LlmAccount"
+          }
+        }
+      },
+      "required": [
+        "flow",
+        "accounts"
+      ]
+    },
+    "LlmAuthCancelParams": {
+      "type": "object",
+      "properties": {
+        "flow_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "flow_id"
+      ]
+    },
+    "LlmAuthCancelResult": {
+      "$ref": "#/$defs/LlmAuthFlow"
+    },
+    "LlmAuthSignOutParams": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "enum": [
+            "chatgpt_oauth",
+            "openrouter_oauth"
+          ]
+        },
+        "account_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider"
+      ]
+    },
+    "LlmAuthSignOutResult": {
+      "type": "object",
+      "properties": {
+        "cleared": {
+          "type": "boolean"
+        },
+        "remote_revocation_confirmed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cleared",
+        "remote_revocation_confirmed"
+      ]
+    },
+    "LlmAuthStartRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "llm.auth.start"
+            },
+            "params": {
+              "$ref": "#/$defs/LlmAuthStartParams"
+            }
+          },
+          "required": [
+            "method"
+          ]
+        }
+      ]
+    },
+    "LlmAuthStartResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/LlmAuthStartResult"
+            }
+          }
+        }
+      ]
+    },
+    "LlmAuthStatusRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "llm.auth.status"
+            },
+            "params": {
+              "$ref": "#/$defs/LlmAuthStatusParams"
+            }
+          },
+          "required": [
+            "method"
+          ]
+        }
+      ]
+    },
+    "LlmAuthStatusResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/LlmAuthStatusResult"
+            }
+          }
+        }
+      ]
+    },
+    "LlmAuthCancelRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "llm.auth.cancel"
+            },
+            "params": {
+              "$ref": "#/$defs/LlmAuthCancelParams"
+            }
+          },
+          "required": [
+            "method"
+          ]
+        }
+      ]
+    },
+    "LlmAuthCancelResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/LlmAuthCancelResult"
+            }
+          }
+        }
+      ]
+    },
+    "LlmAuthSignOutRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "llm.auth.sign_out"
+            },
+            "params": {
+              "$ref": "#/$defs/LlmAuthSignOutParams"
+            }
+          },
+          "required": [
+            "method"
+          ]
+        }
+      ]
+    },
+    "LlmAuthSignOutResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/LlmAuthSignOutResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudAccountsConfigureParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountsConfigureParams"
+    },
+    "CloudAccountsConfigureResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountMutationResult"
+    },
+    "CloudAccountsConfigureRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.accounts.configure"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudAccountsConfigureParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudAccountsConfigureResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudAccountsConfigureResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudAccountsListParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountsListParams"
+    },
+    "CloudAccountsListResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountsListResult"
+    },
+    "CloudAccountsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.accounts.list"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudAccountsListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudAccountsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudAccountsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudAccountsRevokeParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountsRevokeParams"
+    },
+    "CloudAccountsRevokeResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudAccountMutationResult"
+    },
+    "CloudAccountsRevokeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.accounts.revoke"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudAccountsRevokeParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudAccountsRevokeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudAccountsRevokeResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudControlParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudControlParams"
+    },
+    "CloudControlResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudMutationResult"
+    },
+    "CloudControlRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.control"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudControlParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudControlResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudControlResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudGetParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudGetParams"
+    },
+    "CloudGetResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudDeliveryView"
+    },
+    "CloudGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.get"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudGetParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudListParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudListParams"
+    },
+    "CloudListResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudListResult"
+    },
+    "CloudListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.list"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudListResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudPlanParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudPlanParams"
+    },
+    "CloudPlanResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudPlanResult"
+    },
+    "CloudPlanRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.plan"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudPlanParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudPlanResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudPlanResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudSubmitParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudSubmitParams"
+    },
+    "CloudSubmitResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudMutationResult"
+    },
+    "CloudSubmitRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.submit"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudSubmitParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudSubmitResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudSubmitResult"
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowDraftRequest": {
+      "description": "A model-drafting request (human-only, verified terminal). The model sees text-free page outlines under metadata_only (09) and proposes only the extract member.",
+      "type": "object",
+      "required": [
+        "max_cost_micro_usd"
+      ],
+      "properties": {
+        "max_cost_micro_usd": {
+          "description": "Most this one request may cost, in micro-USD; zero allows only free local models.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "WorkflowDraftInfo": {
+      "description": "Accounting of a model draft. A proposal, never an approval.",
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "input_tokens",
+        "output_tokens"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cost_micro_usd": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "ArtifactRetention": {
+      "description": "Object protection selected for an active artifact record.",
+      "oneOf": [
+        {
+          "const": "keep",
+          "description": "Protect the stored content while this record remains active.",
+          "type": "string"
+        },
+        {
+          "const": "evictable",
+          "description": "Permit later collection when no other record or lease protects the content.",
+          "type": "string"
+        }
+      ]
+    },
+    "ArtifactLifecycleOperation": {
+      "description": "One explicit artifact lifecycle effect. Collection and quarantine release are separate policies.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Tombstone the record. User files, materializations and shared content remain untouched.",
+          "properties": {
+            "kind": {
+              "const": "delete",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Change object protection. Weakening protection requires a person's approval.",
+          "properties": {
+            "kind": {
+              "const": "set_retention",
+              "type": "string"
+            },
+            "retain_until": {
+              "default": null,
+              "description": "Additional protection deadline, or no deadline.",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "retention": {
+              "$ref": "#/$defs/ArtifactRetention",
+              "description": "Protection policy."
+            }
+          },
+          "required": [
+            "kind",
+            "retention"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Copy verified bytes to a new file inside a write root visible to this caller.",
+          "properties": {
+            "kind": {
+              "const": "materialize",
+              "type": "string"
+            },
+            "path": {
+              "description": "Absolute destination; existing files and partial files are never replaced.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ArtifactLifecyclePlan": {
+      "additionalProperties": false,
+      "description": "An exact preview accepted by `artifacts.lifecycle.apply`; requester edits are revalidated by the daemon.",
+      "properties": {
+        "artifact_id": {
+          "description": "Record to change or copy.",
+          "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "blake3": {
+          "description": "Expected CAS content identity.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "current_retain_until": {
+          "description": "Protection deadline before the change.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "current_retention": {
+          "$ref": "#/$defs/ArtifactRetention",
+          "description": "Protection policy before the change."
+        },
+        "expected_record_blake3": {
+          "description": "BLAKE3 of the canonical API export before the change (the expected record revision).",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expires_at": {
+          "description": "Preview expiration; no more than 15 minutes after it is produced.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/ArtifactLifecycleOperation",
+          "description": "Complete effect, including the daemon-resolved destination when copying."
+        },
+        "quarantined": {
+          "description": "Quarantine state; this operation cannot clear it.",
+          "type": "boolean"
+        },
+        "requires_approval": {
+          "description": "A human `destructive_op` approval is required before this effect can execute.",
+          "type": "boolean"
+        },
+        "sha256": {
+          "description": "Expected interoperable content digest.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": {
+          "description": "Exact logical length.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "version": {
+          "description": "Plan format, currently 1.",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "artifact_id",
+        "expected_record_blake3",
+        "blake3",
+        "sha256",
+        "size_bytes",
+        "quarantined",
+        "current_retention",
+        "operation",
+        "requires_approval",
+        "expires_at"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecyclePreviewParams": {
+      "additionalProperties": false,
+      "description": "`artifacts.lifecycle.preview` parameters. This method does not persist or execute a plan.",
+      "properties": {
+        "artifact_id": {
+          "description": "Visible active artifact record.",
+          "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/ArtifactLifecycleOperation",
+          "description": "Requested effect."
+        }
+      },
+      "required": [
+        "artifact_id",
+        "operation"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecyclePreviewResult": {
+      "additionalProperties": false,
+      "description": "`artifacts.lifecycle.preview` result. Save this entire receipt for a later apply.",
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/ArtifactLifecyclePlan",
+          "description": "Daemon-computed effect and expected record snapshot."
+        },
+        "plan_hash": {
+          "description": "BLAKE3 of the canonical `{t:\"zeus.artifact.lifecycle.v1\",plan}` object.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "plan_hash"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecyclePreviewRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "artifacts.lifecycle.preview"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsLifecyclePreviewParams"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsLifecyclePreviewResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsLifecyclePreviewResult"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsLifecycleApplyParams": {
+      "additionalProperties": false,
+      "description": "`artifacts.lifecycle.apply` parameters. Repeat this exact request after a person approves it.",
+      "properties": {
+        "idempotency_key": {
+          "description": "Required retry key: 1 to 128 UTF-8 bytes, without control characters.",
+          "type": "string"
+        },
+        "plan": {
+          "$ref": "#/$defs/ArtifactLifecyclePlan",
+          "description": "Complete preview, without amendments."
+        },
+        "plan_hash": {
+          "description": "Hash returned with the preview.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "plan_hash",
+        "idempotency_key"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecycleApplyResult": {
+      "description": "A pending approval or a durable completed lifecycle receipt.",
+      "properties": {
+        "applied": {
+          "description": "The requested effect completed.",
+          "type": "boolean"
+        },
+        "approval_id": {
+          "description": "Existing approval to review; the API never approves it on the caller's behalf.",
+          "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact": {
+          "description": "Portable record after completion, including its tombstone for deletion."
+        },
+        "mode": {
+          "description": "Materialization mode actually used (`copy`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Materialized destination, when this effect copied bytes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replayed": {
+          "description": "This call reused a pending request or completed durable receipt.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied",
+        "replayed"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecycleApplyRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "artifacts.lifecycle.apply"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsLifecycleApplyParams"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsLifecycleApplyResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsLifecycleApplyResult"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

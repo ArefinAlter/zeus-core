@@ -1,0 +1,10 @@
+{
+  "account_id": "research",
+  "mode": "staged_upload",
+  "source": { "kind": "public_url", "url": "https://files.example.org/report.zip", "size_bytes": 1048576 },
+  "remote_name": "report.zip",
+  "max_bytes": 1048576,
+  "max_seconds": 1800,
+  "allow_unbounded_remote": false,
+  "idempotency_key": "research-report-plan-1"
+}

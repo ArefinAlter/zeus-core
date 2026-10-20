@@ -23,6 +23,9 @@ pub struct Meta {
     /// For example `zeus-journal 0.1.0`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
+    /// Durable emergency stop latch. New work is refused while engaged.
+    #[serde(default, skip_serializing_if = "KillSwitchState::is_initial")]
+    pub kill_switch: KillSwitchState,
     /// The newest durable event sequence (0 before the first event).
     pub last_event_seq: u64,
     /// Highest durable event already written to the audit log (outbox cursor).
@@ -30,8 +33,43 @@ pub struct Meta {
     /// Highest durable event already reflected in provenance manifests (outbox cursor; never above
     /// `audit_cursor`).
     pub manifest_cursor: u64,
+    /// Highest event registered in the shared artifact store.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub artifact_cursor: u64,
     /// The newest audit record, updated after each audit fsync.
     pub audit_head: Option<AuditHead>,
+}
+
+/// Persisted emergency-stop state (journal schema v1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KillSwitchState {
+    /// A human must release the latch before work can run.
+    pub engaged: bool,
+    /// When this state last changed.
+    pub changed_at: Timestamp,
+}
+impl Default for KillSwitchState {
+    fn default() -> Self {
+        Self {
+            engaged: false,
+            changed_at: Timestamp::UNIX_EPOCH,
+        }
+    }
+}
+impl KillSwitchState {
+    fn is_initial(&self) -> bool {
+        !self.engaged && self.changed_at == Timestamp::UNIX_EPOCH
+    }
+}
+fn is_zero(value: &u64) -> bool {
+    *value == 0
+}
+impl Meta {
+    /// Whether new work must be refused.
+    #[must_use]
+    pub fn kill_switch_engaged(&self) -> bool {
+        self.kill_switch.engaged
+    }
 }
 
 /// How much of the committed data is re-read on resume (`internal.resume_recheck`).
@@ -95,6 +133,18 @@ pub struct FinalizeState {
 /// Engine-private state of a job; never exposed through any API.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JobInternal {
+    /// First failure since committed progress, for the durable stall budget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_no_progress_since: Option<Timestamp>,
+    /// Consecutive response/code counters, cleared on meaningful committed progress.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub retry_counts: std::collections::BTreeMap<String, u32>,
+    /// Sequence of the last durable creation or state-change event; zero for legacy records.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub last_state_seq: u64,
+    /// Provenance marks actually applied to the completed file, not merely requested.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub os_metadata: Vec<zeus_types::OsMetadataKind>,
     /// Incremented on every entry to `probing`; a commit carrying another epoch is refused (I5).
     pub epoch: u32,
     /// The reserved final path.
@@ -148,6 +198,14 @@ impl JobRecord {
             job,
             internal,
         }
+    }
+
+    /// Public summary with its durable state-event cursor.
+    #[must_use]
+    pub fn summary(&self) -> zeus_types::JobSummary {
+        let mut summary = self.job.summary();
+        summary.state_seq = zeus_types::EventSeq::new(self.internal.last_state_seq).ok();
+        summary
     }
 
     /// The id of the job.
@@ -250,6 +308,12 @@ pub struct IdempotencyRow {
     pub request_hash: Hex256,
     /// The job the first request created.
     pub job_id: JobId,
+    /// Method bound to a generic API mutation, absent for legacy enqueue records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    /// Exact durable response of a generic API mutation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
     /// When the row was created.
     pub created_at: Timestamp,
     /// Retention end (at least 24 hours after creation).
