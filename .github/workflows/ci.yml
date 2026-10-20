@@ -33,7 +33,7 @@ jobs:
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
           # Companion includes the specs copied by this fixture resynchronization and builds on Linux.
-          COMPANION_REF: da8351ab86520d9fefcb28dbb8f10f4a271adb1a
+          COMPANION_REF: f4da89dee3b0485e49f0f2b112143315048be321
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --heads https://github.com/ArefinAlter/zeus.git "$BRANCH" >/dev/null 2>&1; then
