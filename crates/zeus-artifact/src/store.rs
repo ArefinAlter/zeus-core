@@ -690,19 +690,30 @@ impl ArtifactStore {
         state
             .artifacts
             .values()
-            .filter(|a| {
-                (filter.include_deleted || a.state == ArtifactState::Active)
-                    && filter.blake3.is_none_or(|d| a.blake3 == d)
-                    && filter.job_id.is_none_or(|id| a.job_id == Some(id))
-                    && filter.run_id.is_none_or(|id| a.run_id == Some(id))
-            })
-            .take(if filter.limit == 0 {
-                100
-            } else {
-                filter.limit.min(10_000)
-            })
+            .filter(|a| filter.matches(a))
+            .take(filter.bound())
             .map(|a| state.get(a.id))
             .collect()
+    }
+    /// List bounded records newest first, keeping only those `keep` accepts. The bound counts kept records,
+    /// so a caller-side filter (visibility, digest) never hides newer records behind older ones.
+    pub fn list_newest_where(
+        &self,
+        filter: &ArtifactFilter,
+        mut keep: impl FnMut(&Artifact) -> bool,
+    ) -> Result<Vec<Artifact>> {
+        let state = self.load()?;
+        let mut kept = Vec::new();
+        for a in state.artifacts.values().rev().filter(|a| filter.matches(a)) {
+            if kept.len() == filter.bound() {
+                break;
+            }
+            let artifact = state.get(a.id)?;
+            if keep(&artifact) {
+                kept.push(artifact);
+            }
+        }
+        Ok(kept)
     }
     /// Portable export with monotonic privacy reductions.
     pub fn export(&self, id: ArtifactId, privacy: &Privacy) -> Result<Artifact> {
