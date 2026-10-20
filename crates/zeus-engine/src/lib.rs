@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 pub mod api;
+mod approval_lifecycle;
 pub mod config;
 pub mod engine;
 pub mod error;

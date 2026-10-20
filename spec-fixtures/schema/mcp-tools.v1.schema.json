@@ -5,7 +5,7 @@
   "description": "Inputs, outputs, annotations and result envelopes of the zeus_<verb> MCP tools, plus the zeus:// resource contents and the progress notification profile. Normative text: docs/spec/06-mcp-tools-v1.md. Input definitions are closed (the server rejects unknown argument names); output definitions are open (receivers ignore unknown fields, 00-conventions section 4.1 rule 7). The schemas a server publishes in tools/list are derived from these definitions as 06 section 5.2 describes.",
   "$defs": {
     "ToolName": {
-      "description": "The MVP tools, in catalogue order.",
+      "description": "Implemented tools, in stable catalogue order.",
       "enum": [
         "zeus_probe",
         "zeus_enqueue",
@@ -16,12 +16,17 @@
         "zeus_session_list",
         "zeus_session_request",
         "zeus_files_list",
-        "zeus_cloud"
+        "zeus_cloud",
+        "zeus_workflow",
+        "zeus_files",
+        "zeus_artifacts"
       ]
     },
     "LaterToolName": {
       "description": "Names reserved for later tools (06 section 11). Not listed by a v1 server.",
-      "enum": ["zeus_files_organize", "zeus_convert", "zeus_workflow_plan", "zeus_workflow_run", "zeus_manifest_export"]
+      "enum": [
+        "zeus_convert"
+      ]
     },
     "IdempotencyKey": {
       "description": "Client-chosen key, 1 to 128 characters (00-conventions section 5.4).",
@@ -202,7 +207,6 @@
         "untrusted_url": { "$ref": "https://zeus.invalid/schema/common#/$defs/RedactedUrl" }
       }
     },
-
     "ProbeInput": {
       "type": "object",
       "additionalProperties": false,
@@ -235,7 +239,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/ProbeOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "EnqueueInput": {
       "type": "object",
       "additionalProperties": false,
@@ -295,7 +298,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/EnqueueOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "StatusInput": {
       "type": "object",
       "additionalProperties": false,
@@ -328,7 +330,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/StatusOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "WaitInput": {
       "type": "object",
       "additionalProperties": false,
@@ -361,7 +362,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/WaitOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "ControlInput": {
       "type": "object",
       "additionalProperties": false,
@@ -387,7 +387,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/ControlOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "VerifyInput": {
       "type": "object",
       "additionalProperties": false,
@@ -420,7 +419,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/VerifyOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "SessionListInput": {
       "type": "object",
       "additionalProperties": false,
@@ -443,7 +441,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/SessionListOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "SessionRequestInput": {
       "type": "object",
       "additionalProperties": false,
@@ -474,7 +471,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/SessionRequestOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "FilesListInput": {
       "type": "object",
       "additionalProperties": false,
@@ -497,7 +493,6 @@
       "type": "object",
       "anyOf": [{ "$ref": "#/$defs/FilesListOutput" }, { "$ref": "#/$defs/ToolError" }]
     },
-
     "CloudInput": {
       "type": "object",
       "additionalProperties": false,
@@ -691,7 +686,6 @@
         }
       ]
     },
-
     "ToolHints": {
       "description": "The four MCP behaviour hints. Zeus always sends all four (06 section 6).",
       "type": "object",
@@ -728,19 +722,116 @@
         "zeus_session_list",
         "zeus_session_request",
         "zeus_files_list",
-        "zeus_cloud"
+        "zeus_cloud",
+        "zeus_workflow",
+        "zeus_files",
+        "zeus_artifacts"
       ],
       "properties": {
-        "zeus_probe": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true } },
-        "zeus_enqueue": { "const": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true } },
-        "zeus_status": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
-        "zeus_wait": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
-        "zeus_control": { "const": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true } },
-        "zeus_verify": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
-        "zeus_session_list": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
-        "zeus_session_request": { "const": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
-        "zeus_files_list": { "const": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false } },
-        "zeus_cloud": { "const": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true } }
+        "zeus_probe": {
+          "const": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true
+          }
+        },
+        "zeus_enqueue": {
+          "const": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true
+          }
+        },
+        "zeus_status": {
+          "const": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        },
+        "zeus_wait": {
+          "const": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        },
+        "zeus_control": {
+          "const": {
+            "readOnlyHint": false,
+            "destructiveHint": true,
+            "idempotentHint": true,
+            "openWorldHint": true
+          }
+        },
+        "zeus_verify": {
+          "const": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        },
+        "zeus_session_list": {
+          "const": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        },
+        "zeus_session_request": {
+          "const": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        },
+        "zeus_files_list": {
+          "const": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        },
+        "zeus_cloud": {
+          "const": {
+            "readOnlyHint": false,
+            "destructiveHint": true,
+            "idempotentHint": true,
+            "openWorldHint": true
+          }
+        },
+        "zeus_workflow": {
+          "const": {
+            "readOnlyHint": false,
+            "destructiveHint": true,
+            "idempotentHint": true,
+            "openWorldHint": true
+          }
+        },
+        "zeus_files": {
+          "const": {
+            "readOnlyHint": false,
+            "destructiveHint": true,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        },
+        "zeus_artifacts": {
+          "const": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          }
+        }
       }
     },
     "ToolDefinition": {
@@ -766,7 +857,6 @@
         "annotations": { "$ref": "#/$defs/ToolAnnotations" }
       }
     },
-
     "TextContent": {
       "type": "object",
       "required": ["type", "text"],
@@ -815,7 +905,6 @@
         "message": { "type": "string", "maxLength": 200 }
       }
     },
-
     "JobResource": {
       "description": "Text of zeus://jobs/{id} (mimeType application/json).",
       "type": "object",
@@ -875,6 +964,517 @@
       "required": ["job_id"],
       "properties": {
         "job_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/JobId" }
+      }
+    },
+    "WorkflowInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "request": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "plan"
+                },
+                "goal": {
+                  "type": "string"
+                },
+                "start_urls": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "maxItems": 3
+                },
+                "plan_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "candidate": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "description": "Plan IR from zeus://workflow/plan-schema; validated by the daemon."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "action",
+                "goal",
+                "start_urls"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "dry_run"
+                },
+                "plan_id": {
+                  "type": "string"
+                },
+                "sample_items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 20
+                }
+              },
+              "required": [
+                "action",
+                "plan_id"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "run"
+                },
+                "plan_id": {
+                  "type": "string"
+                },
+                "plan_hash": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "plan_id",
+                "plan_hash"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "get"
+                },
+                "run_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "run_id"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "list"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 20
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "control"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "operation": {
+                  "enum": [
+                    "pause",
+                    "resume",
+                    "cancel"
+                  ]
+                }
+              },
+              "required": [
+                "action",
+                "run_id",
+                "operation"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "manifest"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "format": {
+                  "enum": [
+                    "jsonl",
+                    "csv",
+                    "croissant"
+                  ]
+                }
+              },
+              "required": [
+                "action",
+                "run_id",
+                "format"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "request"
+      ]
+    },
+    "WorkflowOutput": {
+      "type": "object",
+      "required": [
+        "operation",
+        "untrusted_data",
+        "truncated",
+        "next"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "untrusted_data": {
+          "type": "object"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "next": {
+          "$ref": "#/$defs/NextStep"
+        }
+      }
+    },
+    "FilesInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "request": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "organize"
+                },
+                "dir": {
+                  "type": "string"
+                },
+                "rules": {
+                  "type": "object",
+                  "description": "{recursive?:bool,rules:[{when?:{ext?:string[],name_regex?:string,min_bytes?:int,max_bytes?:int,older_than_days?:int},subdir?:string,rename?:string,trash?:bool}]}. First match wins; 1–16 rules. Templates: {name}, {stem}, {ext}, {year}, {month}, {day}."
+                },
+                "dry_run": {
+                  "type": "boolean",
+                  "default": true
+                }
+              },
+              "required": [
+                "action",
+                "dir",
+                "rules"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "undo"
+                },
+                "operation_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "operation_id"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "request"
+      ]
+    },
+    "FilesOutput": {
+      "type": "object",
+      "required": [
+        "operation",
+        "untrusted_data",
+        "truncated",
+        "next"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "untrusted_data": {
+          "type": "object"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "next": {
+          "$ref": "#/$defs/NextStep"
+        }
+      }
+    },
+    "ArtifactsInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "request": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "get"
+                },
+                "artifact_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "artifact_id"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "list"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 20
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "job_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "run_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sha256": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "active",
+                        "deleted"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "lineage"
+                },
+                "artifact_id": {
+                  "type": "string"
+                },
+                "direction": {
+                  "enum": [
+                    "ancestors",
+                    "descendants"
+                  ]
+                },
+                "max_depth": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "max_nodes": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 500
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "action",
+                "artifact_id",
+                "direction"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "ingest"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "media_type": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "action",
+                "path"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "request"
+      ]
+    },
+    "ArtifactsOutput": {
+      "type": "object",
+      "required": [
+        "operation",
+        "untrusted_data",
+        "truncated",
+        "next"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "untrusted_data": {
+          "type": "object"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "next": {
+          "$ref": "#/$defs/NextStep"
+        }
       }
     }
   }

@@ -871,42 +871,15 @@ impl Engine {
         });
         let (result, events) = self.inner.journal.transact(|t| {
             let mut before = vec![];
-            // A batched approval (07 section 4.7) stays open while another job still waits for it; the decision
-            // skips the canceled job when it is applied.
             if action == ControlAction::Cancel
                 && actual.job.state == JobState::AwaitingApproval
                 && let Some(approval_id) = actual.job.approval_id
-                && let Some(mut approval) = t.approval(approval_id)?
+                && let Some(approval) = t.approval(approval_id)?
                 && approval.state == ApprovalState::Pending
-                && !t
-                    .jobs(&zeus_journal::JobFilter {
-                        states: Some(vec![JobState::AwaitingApproval]),
-                        after: None,
-                        limit: None,
-                    })?
-                    .iter()
-                    .any(|r| r.job.id != id && r.job.approval_id == Some(approval_id))
             {
-                approval.state = ApprovalState::Canceled;
-                approval.decided_at = Some(now);
-                approval.decision = Some(Decision {
-                    outcome: DecisionOutcome::Cancel,
-                    scope: None,
-                    actor: Actor::system(),
-                    grant_id: None,
-                });
-                t.put_approval(&approval)?;
-                before.push(
-                    ApprovalDecidedData {
-                        approval_id,
-                        kind: approval.kind,
-                        outcome: DecisionOutcome::Cancel,
-                        scope: None,
-                        actor: Actor::system(),
-                        grant_id: None,
-                    }
-                    .into(),
-                );
+                before.extend(crate::approval_lifecycle::leave_pending(
+                    t, approval, id, now,
+                )?);
             }
             let outcome = zeus_journal::apply_transition_in(
                 t,

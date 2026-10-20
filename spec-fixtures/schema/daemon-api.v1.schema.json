@@ -6188,6 +6188,348 @@
           "maximum": 9007199254740991
         }
       }
+    },
+    "ArtifactRetention": {
+      "description": "Object protection selected for an active artifact record.",
+      "oneOf": [
+        {
+          "const": "keep",
+          "description": "Protect the stored content while this record remains active.",
+          "type": "string"
+        },
+        {
+          "const": "evictable",
+          "description": "Permit later collection when no other record or lease protects the content.",
+          "type": "string"
+        }
+      ]
+    },
+    "ArtifactLifecycleOperation": {
+      "description": "One explicit artifact lifecycle effect. Collection and quarantine release are separate policies.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Tombstone the record. User files, materializations and shared content remain untouched.",
+          "properties": {
+            "kind": {
+              "const": "delete",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Change object protection. Weakening protection requires a person's approval.",
+          "properties": {
+            "kind": {
+              "const": "set_retention",
+              "type": "string"
+            },
+            "retain_until": {
+              "default": null,
+              "description": "Additional protection deadline, or no deadline.",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "retention": {
+              "$ref": "#/$defs/ArtifactRetention",
+              "description": "Protection policy."
+            }
+          },
+          "required": [
+            "kind",
+            "retention"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Copy verified bytes to a new file inside a write root visible to this caller.",
+          "properties": {
+            "kind": {
+              "const": "materialize",
+              "type": "string"
+            },
+            "path": {
+              "description": "Absolute destination; existing files and partial files are never replaced.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ArtifactLifecyclePlan": {
+      "additionalProperties": false,
+      "description": "An exact preview accepted by `artifacts.lifecycle.apply`; requester edits are revalidated by the daemon.",
+      "properties": {
+        "artifact_id": {
+          "description": "Record to change or copy.",
+          "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "blake3": {
+          "description": "Expected CAS content identity.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "current_retain_until": {
+          "description": "Protection deadline before the change.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "current_retention": {
+          "$ref": "#/$defs/ArtifactRetention",
+          "description": "Protection policy before the change."
+        },
+        "expected_record_blake3": {
+          "description": "BLAKE3 of the canonical API export before the change (the expected record revision).",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expires_at": {
+          "description": "Preview expiration; no more than 15 minutes after it is produced.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/ArtifactLifecycleOperation",
+          "description": "Complete effect, including the daemon-resolved destination when copying."
+        },
+        "quarantined": {
+          "description": "Quarantine state; this operation cannot clear it.",
+          "type": "boolean"
+        },
+        "requires_approval": {
+          "description": "A human `destructive_op` approval is required before this effect can execute.",
+          "type": "boolean"
+        },
+        "sha256": {
+          "description": "Expected interoperable content digest.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": {
+          "description": "Exact logical length.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "version": {
+          "description": "Plan format, currently 1.",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "artifact_id",
+        "expected_record_blake3",
+        "blake3",
+        "sha256",
+        "size_bytes",
+        "quarantined",
+        "current_retention",
+        "operation",
+        "requires_approval",
+        "expires_at"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecyclePreviewParams": {
+      "additionalProperties": false,
+      "description": "`artifacts.lifecycle.preview` parameters. This method does not persist or execute a plan.",
+      "properties": {
+        "artifact_id": {
+          "description": "Visible active artifact record.",
+          "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/ArtifactLifecycleOperation",
+          "description": "Requested effect."
+        }
+      },
+      "required": [
+        "artifact_id",
+        "operation"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecyclePreviewResult": {
+      "additionalProperties": false,
+      "description": "`artifacts.lifecycle.preview` result. Save this entire receipt for a later apply.",
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/ArtifactLifecyclePlan",
+          "description": "Daemon-computed effect and expected record snapshot."
+        },
+        "plan_hash": {
+          "description": "BLAKE3 of the canonical `{t:\"zeus.artifact.lifecycle.v1\",plan}` object.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "plan_hash"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecyclePreviewRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "artifacts.lifecycle.preview"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsLifecyclePreviewParams"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsLifecyclePreviewResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsLifecyclePreviewResult"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsLifecycleApplyParams": {
+      "additionalProperties": false,
+      "description": "`artifacts.lifecycle.apply` parameters. Repeat this exact request after a person approves it.",
+      "properties": {
+        "idempotency_key": {
+          "description": "Required retry key: 1 to 128 UTF-8 bytes, without control characters.",
+          "type": "string"
+        },
+        "plan": {
+          "$ref": "#/$defs/ArtifactLifecyclePlan",
+          "description": "Complete preview, without amendments."
+        },
+        "plan_hash": {
+          "description": "Hash returned with the preview.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "plan_hash",
+        "idempotency_key"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecycleApplyResult": {
+      "description": "A pending approval or a durable completed lifecycle receipt.",
+      "properties": {
+        "applied": {
+          "description": "The requested effect completed.",
+          "type": "boolean"
+        },
+        "approval_id": {
+          "description": "Existing approval to review; the API never approves it on the caller's behalf.",
+          "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact": {
+          "description": "Portable record after completion, including its tombstone for deletion."
+        },
+        "mode": {
+          "description": "Materialization mode actually used (`copy`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Materialized destination, when this effect copied bytes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replayed": {
+          "description": "This call reused a pending request or completed durable receipt.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied",
+        "replayed"
+      ],
+      "type": "object"
+    },
+    "ArtifactsLifecycleApplyRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method",
+            "params"
+          ],
+          "properties": {
+            "method": {
+              "const": "artifacts.lifecycle.apply"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsLifecycleApplyParams"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsLifecycleApplyResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsLifecycleApplyResult"
+            }
+          }
+        }
+      ]
     }
   }
 }

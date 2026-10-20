@@ -1,1 +1,6 @@
-{ "states": ["failed", "awaiting_approval"], "limit": 5 }
+{
+  "urls": ["https://portal.example.org/download/8841", "https://portal.example.org/download/8842"],
+  "session_origin": "https://portal.example.org",
+  "dest_dir": "reports/2026",
+  "idempotency_key": "portal-reports-2026-q3"
+}

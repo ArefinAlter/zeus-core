@@ -752,7 +752,7 @@
       ]
     },
     "RunCounts": {
-      "description": "Daemon-only. Counters of a run. All are monotonic while the run exists.",
+      "description": "Daemon-only. Discovery counters commit with checkpoints; engine job outcome counts describe current durable state, so retry can change them. Pending job intents are excluded from files_enqueued in API reports.",
       "type": "object",
       "required": [
         "pages_fetched", "pages_failed", "pages_skipped_robots",
@@ -785,6 +785,7 @@
       "type": "object",
       "required": ["run_id", "plan_id", "plan_hash", "status", "pause_reason", "stop_reason", "possibly_incomplete", "approval_id", "grant_id", "created_at", "started_at", "finished_at", "updated_at", "elapsed_ms", "counts", "last_error", "drift"],
       "properties": {
+        "report_version": { "type": "integer", "enum": [0, 1], "description": "Version 1 records complete counters from creation; 0 marks a legacy checkpoint." },
         "run_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" },
         "plan_id": { "$ref": "#/$defs/PlanId" },
         "plan_hash": { "$ref": "#/$defs/PlanHash" },
@@ -794,12 +795,12 @@
         "possibly_incomplete": { "type": "boolean" },
         "approval_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId" }, { "type": "null" }] },
         "grant_id": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/GrantId" }, { "type": "null" }] },
-        "created_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "created_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }], "description": "Null when unavailable in a legacy checkpoint." },
         "started_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
         "finished_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }] },
-        "updated_at": { "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" },
+        "updated_at": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/Timestamp" }, { "type": "null" }], "description": "Null when unavailable in a legacy checkpoint." },
         "elapsed_ms": { "$ref": "https://zeus.invalid/schema/common#/$defs/DurationMs" },
-        "counts": { "$ref": "#/$defs/RunCounts" },
+        "counts": { "oneOf": [{ "$ref": "#/$defs/RunCounts" }, { "type": "null" }], "description": "Null only for legacy checkpoints whose complete discovery counters were not retained." },
         "last_error": { "oneOf": [{ "$ref": "https://zeus.invalid/schema/common#/$defs/ErrorEnvelope" }, { "type": "null" }] },
         "drift": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/Diagnostic" } }
       }

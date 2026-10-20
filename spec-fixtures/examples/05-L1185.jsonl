@@ -1,0 +1,2 @@
+{"jsonrpc":"2.0","id":132,"method":"artifacts.lifecycle.preview","params":{"artifact_id":"art_01M45NK2V7TQ8X3CZD5RWB9HME","operation":{"kind":"set_retention","retention":"keep","retain_until":null}}}
+{"jsonrpc":"2.0","id":133,"method":"artifacts.lifecycle.preview","params":{"artifact_id":"art_01M45NK2V7TQ8X3CZD5RWB9HME","operation":{"kind":"materialize","path":"/home/alice/Downloads/dataset-v3-copy.tar.zst"}}}

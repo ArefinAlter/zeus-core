@@ -1,0 +1,17 @@
+{
+  "jsonrpc":"2.0","id":131,"method":"artifacts.lifecycle.apply",
+  "params":{
+    "plan":{
+      "version":1,"artifact_id":"art_01M45NK2V7TQ8X3CZD5RWB9HME",
+      "expected_record_blake3":"569d40a400931efb7ff119f738a213864cbe57e6504cfe9f56a501ad8382e33e",
+      "blake3":"1e0f07a3c0beca17e28b2d889c3e78a743e9c931e3d5efbff76921fe028ce231",
+      "sha256":"eba4a8587ad422baa9bb314f660b11dfd73563c9af06c6c6ed6ec4bf2da2bc47",
+      "size_bytes":1288490188,"quarantined":false,
+      "current_retention":"evictable","current_retain_until":null,
+      "operation":{"kind":"delete"},"requires_approval":true,
+      "expires_at":"2026-10-21T10:15:00.000Z"
+    },
+    "plan_hash":"6260ca2ad1cb9989e6a742588feb7f0c416f1d6054f62f85af560c26a18671d0",
+    "idempotency_key":"artifact-tombstone-2026-10-21-1"
+  }
+}
