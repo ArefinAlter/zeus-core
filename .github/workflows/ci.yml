@@ -1,6 +1,6 @@
 # Required checks for the zeus-core engine workspace. The spec fixtures are copies of the zeus repository's
 # docs/spec (public), so the fixture job checks zeus out beside this repository: the branch with the same name
-# when it exists, otherwise main. The downstream job builds the zeus app against this core change, because
+# when it exists, otherwise the compatible revision pinned below. The downstream job builds the zeus app against this core change, because
 # the engine's public API is a contract with two consumers (ADR 0011 in the zeus repository).
 name: CI
 
@@ -32,12 +32,14 @@ jobs:
         shell: bash
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          # Companion supports ApprovalResolution.job_id; its specs match this stack stage.
+          COMPANION_REF: 8a2f8e2d6c68116e07082a8f20f129d7eb89ce54
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --heads https://github.com/ArefinAlter/zeus.git "$BRANCH" >/dev/null 2>&1; then
             ref="$BRANCH"
           else
-            ref="main"
+            ref="$COMPANION_REF"
           fi
           echo "zeus ref: $ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
