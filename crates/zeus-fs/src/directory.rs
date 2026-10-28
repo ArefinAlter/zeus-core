@@ -93,6 +93,12 @@ fn leaf(name: &OsStr) -> FsResult<()> {
     Ok(())
 }
 
+/// Validate one portable leaf without rewriting it. Preview builders use the same rules as the
+/// eventual filesystem operation, including device aliases and alternate-data-stream syntax.
+pub fn validate_filename(name: &OsStr) -> FsResult<()> {
+    leaf(name)
+}
+
 /// Read regular-file or directory metadata and identity from the opened object.
 pub fn opened_file_metadata(file: &std::fs::File) -> FsResult<FileMeta> {
     let m = file.metadata()?;
@@ -150,6 +156,19 @@ impl DirectoryCap {
     /// Identity of the retained directory object, without reopening its path.
     pub fn file_id(&self) -> FsResult<zeus_types::FileId> {
         file_identity(&self.0.dir.try_clone()?.into_std_file())
+    }
+
+    /// Metadata of the retained directory object, without reopening its path.
+    pub fn metadata(&self) -> FsResult<FileMeta> {
+        opened_file_metadata(&self.0.dir.try_clone()?.into_std_file())
+    }
+
+    /// Flush directory entries on Unix. Windows has no portable directory flush here; success
+    /// there is not a claim of power-loss durability on the underlying volume.
+    pub fn sync(&self) -> FsResult<()> {
+        #[cfg(unix)]
+        self.0.dir.try_clone()?.into_std_file().sync_all()?;
+        Ok(())
     }
 
     /// Resolve an existing directory using only normal, non-link components. Empty means this root.
@@ -263,6 +282,17 @@ impl DirectoryCap {
         opened_file_metadata(&self.open(name, false, false, true)?)
     }
 
+    /// Whether a child entry exists, including a final link. Errors other than absence propagate.
+    /// This is an advisory presence check; exclusive creation/publication still decides collisions.
+    pub fn entry_exists(&self, name: &OsStr) -> FsResult<bool> {
+        leaf(name)?;
+        match self.0.dir.symlink_metadata(name) {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     /// List up to `limit` child names without following their entries. Exceeding the bound fails.
     pub fn entry_names(&self, limit: usize) -> FsResult<Vec<std::ffi::OsString>> {
         let mut names = Vec::new();
@@ -325,6 +355,37 @@ impl RenameSource {
     /// Metadata and identity read from the retained source object.
     pub fn metadata(&self) -> FsResult<FileMeta> {
         opened_file_metadata(&self.file)
+    }
+
+    /// Remove this opened file or empty directory only when it has the caller's expected identity.
+    /// Windows acts on the retained handle. Unix compares the current entry, then unlinks relative
+    /// to its held parent; this is not an atomic compare-unlink against a same-user process.
+    pub fn remove(self, expected: &zeus_types::FileId) -> FsResult<()> {
+        let meta = self.metadata()?;
+        if meta.file_id.as_ref() != Some(expected) {
+            return Err(FsError::OutsideRoots);
+        }
+        #[cfg(windows)]
+        {
+            crate::sys::delete_open_file(&self.file)
+        }
+        #[cfg(unix)]
+        {
+            let current = self._parent.open(&self.name, false, true, true)?;
+            if file_identity(&current)? != *expected {
+                return Err(FsError::OutsideRoots);
+            }
+            rustix::fs::unlinkat(
+                &self._parent.0.dir,
+                &self.name,
+                if meta.is_dir {
+                    rustix::fs::AtFlags::REMOVEDIR
+                } else {
+                    rustix::fs::AtFlags::empty()
+                },
+            )
+            .map_err(|e| io_error(e.into()))
+        }
     }
 
     /// Atomically publish without replacing a destination. Cross-volume moves fail.
@@ -497,6 +558,43 @@ mod tests {
         )
         .unwrap();
         assert!(root.open_read(os("pipe")).is_err());
+    }
+
+    #[test]
+    fn expected_object_removal_refuses_replacements_and_nonempty_directories() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = DirectoryCap::open_root(temp.path()).unwrap();
+        root.create_new(os("one")).unwrap();
+        root.create_new(os("two")).unwrap();
+        let one = root.entry_metadata(os("one")).unwrap().file_id.unwrap();
+        let two = root.entry_metadata(os("two")).unwrap().file_id.unwrap();
+        assert!(
+            root.prepare_rename(os("one"))
+                .unwrap()
+                .remove(&two)
+                .is_err()
+        );
+        assert!(root.entry_exists(os("one")).unwrap());
+        root.prepare_rename(os("one"))
+            .unwrap()
+            .remove(&one)
+            .unwrap();
+        assert!(!root.entry_exists(os("one")).unwrap());
+        let dir = root.create_dir_all(Path::new("dir")).unwrap();
+        dir.create_new(os("child")).unwrap();
+        let id = dir.file_id().unwrap();
+        drop(dir);
+        assert!(root.prepare_rename(os("dir")).unwrap().remove(&id).is_err());
+        let dir = root.open_dir(Path::new("dir")).unwrap();
+        let child = dir.entry_metadata(os("child")).unwrap().file_id.unwrap();
+        dir.prepare_rename(os("child"))
+            .unwrap()
+            .remove(&child)
+            .unwrap();
+        drop(dir);
+        root.prepare_rename(os("dir")).unwrap().remove(&id).unwrap();
+        assert!(!root.entry_exists(os("dir")).unwrap());
+        root.sync().unwrap();
     }
 
     #[test]
