@@ -163,6 +163,11 @@ impl DirectoryCap {
         opened_file_metadata(&self.0.dir.try_clone()?.into_std_file())
     }
 
+    /// Native metadata of this retained directory, including OS hidden/system flags.
+    pub fn os_metadata(&self) -> FsResult<std::fs::Metadata> {
+        Ok(self.0.dir.try_clone()?.into_std_file().metadata()?)
+    }
+
     /// Flush directory entries on Unix. Windows has no portable directory flush here; success
     /// there is not a claim of power-loss durability on the underlying volume.
     pub fn sync(&self) -> FsResult<()> {
@@ -291,6 +296,18 @@ impl DirectoryCap {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// OS metadata from an opened, no-follow regular file or directory. Preserves native
+    /// hidden/system flags for metadata indexes without a later ambient-path stat.
+    pub fn entry_os_metadata(&self, name: &OsStr) -> FsResult<std::fs::Metadata> {
+        Ok(self.open(name, false, false, true)?.metadata()?)
+    }
+
+    /// Stream child names without following entries or retaining a directory-sized vector.
+    /// Borrowing this capability keeps its complete parent chain alive during enumeration.
+    pub fn iter_names(&self) -> FsResult<impl Iterator<Item = FsResult<std::ffi::OsString>> + '_> {
+        Ok(self.0.dir.entries()?.map(|entry| Ok(entry?.file_name())))
     }
 
     /// List up to `limit` child names without following their entries. Exceeding the bound fails.
