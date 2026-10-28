@@ -101,13 +101,15 @@ zeroize = { version = "1.9", features = ["derive"] }
 
 # ---- platform and filesystem ----
 fs4 = "1.1"
+cap-std = "4.0.3"
+cap-fs-ext = "4.0.3"
 infer = "0.22"
 camino = "1.2"
 trash = "5.2"
 libc = "0.2"
 rustix = { version = "1", features = ["fs"] }
 xattr = "1.6"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO", "Wdk_Storage_FileSystem"] }
 
 # ---- test and bench only ----
 tempfile = "3.27"

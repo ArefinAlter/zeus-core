@@ -28,7 +28,7 @@ pub use api::{
     ApprovalResolution, Caller, ControlAction, EngineStatus, EnqueueOutcome, EnqueueRequest,
     GrantChange, GrantChangeKind, KillSwitchOutcome, ListFilter, Page, ProbeUrlRequest,
 };
-pub use config::{EngineConfig, SchedulerLimits, Timeouts};
+pub use config::{EngineConfig, SchedulerLimits, Timeouts, TransferTuning};
 pub use engine::{Engine, EngineBuilder};
 pub use error::{EngineError, EngineResult};
 pub use events::{EngineEvent, EventSubscription};

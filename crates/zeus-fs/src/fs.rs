@@ -257,7 +257,7 @@ impl DataFile for RealDataFile {
     }
 }
 
-fn file_identity(file: &std::fs::File) -> FsResult<FileId> {
+pub(crate) fn file_identity(file: &std::fs::File) -> FsResult<FileId> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -298,7 +298,7 @@ fn open_file(path: &Path, create: bool, writable: bool) -> FsResult<std::fs::Fil
     Ok(file)
 }
 
-fn is_reparse(m: &std::fs::Metadata) -> bool {
+pub(crate) fn is_reparse(m: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
