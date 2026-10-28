@@ -13,7 +13,9 @@
 //! `awaiting_approval`, `awaiting_session`, `retry_scheduled` and `paused` as the waiting states and an
 //! audit record at every material step.
 use crate::api::*;
-use crate::config::EngineConfig;
+use crate::config::{EngineConfig, TransferTuning};
+#[path = "adaptive.rs"]
+mod adaptive;
 use crate::error::{EngineError, EngineResult};
 use crate::events::{EngineEvent, EventSubscription};
 use crate::ports::ApprovalPort;
@@ -49,6 +51,7 @@ use zeus_verify::content::{ContentDetector, InferDetector};
 /// or is optional (no session provider means jobs that need a session wait in `awaiting_session`).
 pub struct EngineBuilder {
     pub(crate) config: EngineConfig,
+    pub(crate) transfer_tuning: TransferTuning,
     pub(crate) clock: SharedClock,
     pub(crate) rng: Box<dyn RandomSource>,
     pub(crate) ids: Arc<IdGenerator>,
@@ -71,6 +74,7 @@ impl EngineBuilder {
     pub fn new(config: EngineConfig) -> Self {
         Self {
             config,
+            transfer_tuning: TransferTuning::default(),
             clock: Arc::new(SystemClock::new()),
             rng: Box::new(SystemRandom),
             ids: Arc::new(IdGenerator::new()),
@@ -85,6 +89,13 @@ impl EngineBuilder {
             detector: Arc::new(InferDetector),
             job_transports: None,
         }
+    }
+
+    /// Sets adaptive range execution policy without changing the embedder's configuration shape.
+    #[must_use]
+    pub fn transfer_tuning(mut self, tuning: TransferTuning) -> Self {
+        self.transfer_tuning = tuning;
+        self
     }
 
     /// Injects the clock (tests use `ManualClock`).
@@ -182,6 +193,7 @@ impl EngineBuilder {
     /// Validates the configuration, runs startup recovery (03 section 10) and starts the scheduler.
     pub async fn build(self) -> EngineResult<Engine> {
         self.config.validate()?;
+        self.transfer_tuning.validate()?;
         let journal = self
             .journal
             .ok_or_else(|| rejected(codes::NM_SCHEMA_VIOLATION, "a journal is required"))?;
@@ -204,9 +216,9 @@ impl EngineBuilder {
         let engine = Engine {
             inner: Arc::new(EngineInner {
                 slots: Arc::new(Semaphore::new(self.config.limits.concurrent_jobs as usize)),
-                connections: Arc::new(Semaphore::new(
-                    self.config.limits.connections_per_host as usize,
-                )),
+                connections: Mutex::new(BTreeMap::new()),
+                concurrency_targets: Mutex::new(BTreeMap::new()),
+                transfer_tuning: self.transfer_tuning,
                 config: self.config,
                 clock: self.clock,
                 rng: Mutex::new(self.rng),
@@ -264,8 +276,10 @@ struct EngineInner {
     transport: Arc<dyn HttpTransport>,
     roots: WriteRoots,
     slots: Arc<Semaphore>,
-    // Conservative shared budget also bounds aggregate requests across redirects and origins.
-    connections: Arc<Semaphore>,
+    // Bounded independent origin budgets; idle entries can be evicted without affecting active work.
+    connections: Mutex<BTreeMap<String, Arc<adaptive::HostBudget>>>,
+    concurrency_targets: Mutex<BTreeMap<String, u32>>,
+    transfer_tuning: TransferTuning,
     running: Mutex<BTreeMap<JobId, Running>>,
     stopping: AtomicBool,
     shutdown_notice: Mutex<Option<ShutdownNotice>>,
@@ -309,7 +323,33 @@ async fn blocking<T: Send + 'static>(
 }
 impl Engine {
     /// Validates and durably accepts one download, scoped by the authenticated caller.
-    pub async fn enqueue(&self, mut request: EnqueueRequest) -> EngineResult<EnqueueOutcome> {
+    pub async fn enqueue(&self, request: EnqueueRequest) -> EngineResult<EnqueueOutcome> {
+        self.enqueue_inner(request, false).await
+    }
+    /// Reserve and commit a job in `paused` state without starting any worker.
+    ///
+    /// Trusted embedders can bind a separately durable source record to the
+    /// returned job identity before explicitly resuming it. Creation and S05
+    /// are one journal transaction; startup does not schedule paused jobs.
+    /// Source factories must still reject absent or revoked identity bindings.
+    /// Browser/session jobs use ordinary enqueue and are refused here.
+    pub async fn enqueue_held(&self, request: EnqueueRequest) -> EngineResult<EnqueueOutcome> {
+        if request.spec.session_origin.is_some()
+            || request.spec.transport_hint() == TransportHint::BrowserProxy
+            || request.spec.source.kind == SourceKind::BrowserHandoff
+        {
+            return Err(rejected(
+                "api.invalid_params",
+                "held admission does not support browser or session authority",
+            ));
+        }
+        self.enqueue_inner(request, true).await
+    }
+    async fn enqueue_inner(
+        &self,
+        mut request: EnqueueRequest,
+        held: bool,
+    ) -> EngineResult<EnqueueOutcome> {
         let _gate = self.inner.gate.lock().await;
         if self.inner.stopping.load(Ordering::Acquire) {
             return Err(EngineError::ShuttingDown);
@@ -325,6 +365,11 @@ impl Engine {
         hash_spec.idempotency_key = None;
         let hash =
             zeus_verify::hash_bytes(&zeus_verify::canonical::to_jcs_bytes(&hash_spec)?).blake3;
+        let method = if held {
+            "jobs.enqueue_held"
+        } else {
+            "jobs.enqueue"
+        };
         if let Some(key) = &request.spec.idempotency_key
             && let Some(row) = self
                 .inner
@@ -336,7 +381,7 @@ impl Engine {
             if row
                 .method
                 .as_deref()
-                .is_some_and(|method| method != "jobs.enqueue")
+                .map_or(held, |existing| existing != method)
                 || row.request_hash != hash
             {
                 return Err(EngineError::IdempotencyConflict);
@@ -512,7 +557,7 @@ impl Engine {
             })?;
             if let Some(key) = &job.spec.idempotency_key {
                 t.put_idempotency(&zeus_journal::IdempotencyRow {
-                    method: Some("jobs.enqueue".into()),
+                    method: Some(method.into()),
                     result: None,
                     client_id: request.caller.client_id.clone(),
                     key: key.clone(),
@@ -566,6 +611,28 @@ impl Engine {
                     ApprovalRequestedData { approval: public }.into(),
                 )?);
             }
+            if held {
+                let paused = zeus_journal::apply_transition_in(
+                    t,
+                    TransitionRequest {
+                        job_id: id,
+                        transition: "S05",
+                        trigger: TransitionActor::Client,
+                        cause: StateCause::UserRequest,
+                        actor: Actor {
+                            kind: request.caller.kind,
+                            client_id: Some(request.caller.client_id.clone()),
+                            surface: None,
+                        },
+                        now,
+                        events_before: vec![],
+                        events_after: vec![],
+                    },
+                    &mut |_| Ok(()),
+                )?;
+                job = paused.record.job;
+                events.extend(paused.events);
+            }
             Ok(events)
         })?;
         self.publish(event);
@@ -581,15 +648,7 @@ impl Engine {
     /// Probes a public URL without persisting a job or releasing session material.
     pub async fn probe(&self, request: ProbeUrlRequest) -> EngineResult<ProbeResult> {
         self.ensure_running()?;
-        let _connection = self
-            .inner
-            .connections
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| EngineError::ShuttingDown)?;
-        self.ensure_running()?;
-        let outcome = HttpProber::new(self.inner.transport.clone())
+        let outcome = HttpProber::new(self.bounded_transport(self.inner.transport.clone()))
             .probe(
                 ProbeRequest {
                     url: request.url,
@@ -2059,7 +2118,7 @@ impl Engine {
             .inner
             .job_transports
             .as_ref()
-            .map(|f| f.for_job(&spec))
+            .map(|f| f.for_job_id(id, &spec))
             .transpose()
             .map_err(EngineError::Rejected)?
             .flatten()
@@ -2088,9 +2147,7 @@ impl Engine {
         if self.record(id)?.job.state == JobState::AwaitingSession {
             return Ok(());
         }
-        let mut probe_connection = Some(
-            tokio::select! {biased;_=cancel.cancelled()=>return Err(HttpError::Canceled.into()),p=self.inner.connections.clone().acquire_owned()=>p.map_err(|_|EngineError::ShuttingDown)?},
-        );
+        transport = self.bounded_transport(transport);
         let request = ProbeRequest {
             url: spec.url.clone(),
             hint_url: spec.hint_url.clone(),
@@ -2117,7 +2174,7 @@ impl Engine {
                 let Some(proxy) = self.browser_transport(id)? else {
                     return Ok(());
                 };
-                transport = proxy;
+                transport = self.bounded_transport(proxy);
                 session = None;
                 browser_proxy = true;
                 HttpProber::new(transport.clone())
@@ -2220,62 +2277,32 @@ impl Engine {
             && probe.result.total_bytes.is_some()
         {
             let total = probe.result.total_bytes.unwrap_or(0);
-            let committed = self.inner.journal.committed(id)?;
-            // Requests are at most a commit unit; pending buffers and writes remain bounded.
-            drop(probe_connection.take());
-            let piece_bytes = if browser_proxy {
-                self.inner
-                    .config
-                    .commit
-                    .commit_unit_bytes
-                    .min(8 * 1024 * 1024)
-            } else {
-                self.inner.config.commit.commit_unit_bytes
-            };
-            let ranges = committed.uncovered(total).into_iter().flat_map(move |r| {
-                std::iter::successors(Some(r.start), move |start| {
-                    let next = start.saturating_add(piece_bytes);
-                    (next < r.end).then_some(next)
-                })
-                .take_while(move |start| *start < r.end)
-                .map(move |start| ByteRange {
-                    start,
-                    end: start.saturating_add(piece_bytes).min(r.end),
-                })
-            });
-            let connections = usize::from(spec.max_connections())
-                .min(self.inner.config.limits.connections_per_job as usize)
-                .min(self.inner.config.limits.connections_per_host as usize)
-                .max(1);
-            let group_cancel = cancel.child_token();
-            let plan_cancel = group_cancel.clone();
-            let mut work = futures::stream::iter(ranges.take_while(move |_|!plan_cancel.is_cancelled()).map(|range| {
-                let file = file.clone(); let engine = self.clone(); let url = probe.resolved_url.clone(); let bound = probe.result.validators.clone(); let extra = spec.extra_headers.clone(); let cancel = group_cancel.clone(); let epoch = record.internal.epoch; let session=session.clone();let transport=transport.clone();
-                async move {
-                    let _connection=tokio::select!{biased;_=cancel.cancelled()=>return Err(HttpError::Canceled.into()),p=engine.inner.connections.clone().acquire_owned()=>p.map_err(|_|EngineError::ShuttingDown)?};
-                    engine.ensure_running()?;
-                    let mut sink = DiskSink { file: file.clone(), crc: 0, bytes: 0 };
-                    let result = HttpSegmentFetcher::new(transport).fetch(SegmentRequest {
-                        url, range, bound_validators: bound, total_bytes: Some(total), session, extra_headers: extra,
-                        head_timeout: engine.inner.config.timeouts.probe, idle_timeout: engine.inner.config.timeouts.read, chunk_bytes: 64 * 1024,
-                    }, &mut sink, &cancel).await?;
-                    if result.end != SegmentEnd::Complete { return Err(rejected(codes::NET_PREMATURE_EOF, "segment ended before all bytes arrived")); }
-                    if cancel.is_cancelled() { return Err(HttpError::Canceled.into()); }
-                    engine.commit(file, id, epoch, range, sink.crc).await
-                }
-            })).buffer_unordered(connections);
-            let mut failure = None;
-            while let Some(outcome) = work.next().await {
-                if let Err(error) = outcome
-                    && failure.is_none()
-                {
-                    failure = Some(error);
-                    group_cancel.cancel();
-                }
-            }
-            if let Some(error) = failure {
-                return Err(error);
-            }
+            self.download_ranges(
+                adaptive::RangeRun {
+                    id,
+                    epoch: record.internal.epoch,
+                    file: file.clone(),
+                    transport,
+                    browser_proxy,
+                    max_connections: spec.max_connections().into(),
+                    request: SegmentRequest {
+                        url: probe.resolved_url.clone(),
+                        range: ByteRange {
+                            start: 0,
+                            end: total,
+                        },
+                        bound_validators: probe.result.validators.clone(),
+                        total_bytes: Some(total),
+                        session,
+                        extra_headers: spec.extra_headers.clone(),
+                        head_timeout: self.inner.config.timeouts.probe,
+                        idle_timeout: self.inner.config.timeouts.read,
+                        chunk_bytes: 64 * 1024,
+                    },
+                },
+                cancel,
+            )
+            .await?;
         } else if let Some(mut body) = probe.body {
             let mut buffer =
                 Vec::with_capacity(self.inner.config.commit.commit_unit_bytes as usize);
@@ -2444,7 +2471,8 @@ impl Engine {
                 now,
                 &mut |txn, record| {
                     if let Some(factory) = &engine.inner.job_transports
-                        && let Err(error) = factory.validate_commit(&record.job.spec, txn, range)
+                        && let Err(error) =
+                            factory.validate_job_commit(id, &record.job.spec, txn, range)
                     {
                         policy_error = Some(error);
                         return Ok(false);
@@ -2720,26 +2748,6 @@ impl Engine {
             Ok(())
         })
         .await
-    }
-}
-struct DiskSink {
-    file: Arc<dyn DataFile>,
-    crc: u32,
-    bytes: u64,
-}
-#[async_trait::async_trait]
-impl zeus_http::Sink for DiskSink {
-    async fn write_at(&mut self, offset: u64, data: bytes::Bytes) -> zeus_http::HttpResult<()> {
-        let file = self.file.clone();
-        let crc = crc32c::crc32c_append(self.crc, &data);
-        let len = data.len() as u64;
-        tokio::task::spawn_blocking(move || file.write_all_at(offset, &data))
-            .await
-            .map_err(|_| HttpError::Invalid("writer task failed"))?
-            .map_err(|e| HttpError::Classified(e.to_envelope()))?;
-        self.crc = crc;
-        self.bytes += len;
-        Ok(())
     }
 }
 

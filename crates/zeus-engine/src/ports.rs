@@ -56,6 +56,15 @@ pub trait JobTransportFactory: Send + Sync {
         &self,
         spec: &zeus_types::JobSpec,
     ) -> Result<Option<std::sync::Arc<dyn zeus_http::HttpTransport>>, ErrorEnvelope>;
+    /// Resolve private transport bindings using the durable engine-minted job identity. The
+    /// default preserves existing embedders; caller-controlled labels are never authority.
+    fn for_job_id(
+        &self,
+        _job_id: JobId,
+        spec: &zeus_types::JobSpec,
+    ) -> Result<Option<std::sync::Arc<dyn zeus_http::HttpTransport>>, ErrorEnvelope> {
+        self.for_job(spec)
+    }
     /// Enforce run-wide commit budgets while the journal writer excludes concurrent commits.
     fn validate_commit(
         &self,
@@ -64,6 +73,17 @@ pub trait JobTransportFactory: Send + Sync {
         _range: zeus_types::ByteRange,
     ) -> Result<(), ErrorEnvelope> {
         Ok(())
+    }
+    /// Recheck identity-bound source authority at every durable commit, including after refresh
+    /// or revocation. Existing workflow factories retain their original validation.
+    fn validate_job_commit(
+        &self,
+        _job_id: JobId,
+        spec: &zeus_types::JobSpec,
+        txn: &dyn zeus_journal::ReadTxn,
+        range: zeus_types::ByteRange,
+    ) -> Result<(), ErrorEnvelope> {
+        self.validate_commit(spec, txn, range)
     }
 }
 

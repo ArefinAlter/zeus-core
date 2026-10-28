@@ -29,7 +29,7 @@ pub struct EnqueueRequest {
 /// The result of `enqueue`.
 #[derive(Debug, Clone)]
 pub struct EnqueueOutcome {
-    /// The job (`queued` or `awaiting_approval`).
+    /// The job (`queued`, `awaiting_approval`, or `paused` for held admission).
     pub job: Job,
     /// True when `idempotency_key` matched an earlier identical request and its stored job is returned.
     pub deduplicated: bool,

@@ -555,7 +555,7 @@ impl ProxyFetch for Proxy {
         self.calls.fetch_add(1, Ordering::SeqCst);
         assert_eq!(r.origin.as_str(), "https://source.example");
         let range = r.range.unwrap();
-        assert!(range.end - range.start <= 256 * 1024);
+        assert!(range.end - range.start <= 8 * 1024 * 1024);
         if range.end - range.start > 1 {
             assert_eq!(r.if_range.as_deref(), Some("\"v1\""));
         }

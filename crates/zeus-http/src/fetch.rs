@@ -8,7 +8,8 @@
 //! equals the requested start; the total equals the known total; `ETag` and a strong `Last-Modified`
 //! equal the bound validators; the body does not exceed the requested length. A violation aborts the
 //! request with `integrity.range_mismatch`, `integrity.resource_changed` or `integrity.range_overrun`;
-//! bytes already written for the failed response are never committed.
+//! the sink decides durability. The engine may acknowledge complete commit units from a strongly
+//! validated response before EOF; its unfinished tail is never acknowledged and is re-requested.
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -227,5 +228,85 @@ mod tests {
     fn the_traits_are_object_safe() {
         fn takes(_: Option<&dyn SegmentFetcher>, _: Option<&mut dyn Sink>) {}
         takes(None, None);
+    }
+
+    #[tokio::test]
+    async fn cancellation_drains_an_inflight_writer_before_returning() {
+        use crate::transport::{HttpRequest, HttpResponse, HttpTransport, TransportError};
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct OneResponse;
+        #[async_trait]
+        impl HttpTransport for OneResponse {
+            async fn send(&self, request: HttpRequest) -> Result<HttpResponse, TransportError> {
+                let mut headers = http::HeaderMap::new();
+                headers.insert("content-range", "bytes 0-3/4".parse().unwrap());
+                headers.insert("content-length", "4".parse().unwrap());
+                Ok(HttpResponse {
+                    status: http::StatusCode::PARTIAL_CONTENT,
+                    version: http::Version::HTTP_11,
+                    headers,
+                    url: request.url,
+                    body: Box::pin(futures::stream::iter([Ok(Bytes::from_static(b"data"))])),
+                })
+            }
+        }
+        struct HeldWriter {
+            entered: Option<tokio::sync::oneshot::Sender<()>>,
+            release: Option<tokio::sync::oneshot::Receiver<()>>,
+            completed: Arc<AtomicBool>,
+        }
+        #[async_trait]
+        impl Sink for HeldWriter {
+            async fn write_at(&mut self, _: u64, data: Bytes) -> HttpResult<()> {
+                assert_eq!(&data[..], b"data");
+                self.entered.take().unwrap().send(()).unwrap();
+                self.release.take().unwrap().await.unwrap();
+                self.completed.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+        let (entered, started) = tokio::sync::oneshot::channel();
+        let (release, released) = tokio::sync::oneshot::channel();
+        let completed = Arc::new(AtomicBool::new(false));
+        let mut sink = HeldWriter {
+            entered: Some(entered),
+            release: Some(released),
+            completed: completed.clone(),
+        };
+        let cancel = CancellationToken::new();
+        let token = cancel.clone();
+        let task = tokio::spawn(async move {
+            HttpSegmentFetcher::new(Arc::new(OneResponse))
+                .fetch(
+                    SegmentRequest {
+                        url: HttpUrl::parse("https://fixture.invalid/file").unwrap(),
+                        range: ByteRange::new(0, 4).unwrap(),
+                        bound_validators: Validators::default(),
+                        total_bytes: Some(4),
+                        session: None,
+                        extra_headers: BTreeMap::new(),
+                        head_timeout: Duration::from_secs(1),
+                        idle_timeout: Duration::from_secs(1),
+                        chunk_bytes: 4,
+                    },
+                    &mut sink,
+                    &token,
+                )
+                .await
+        });
+        started.await.unwrap();
+        cancel.cancel();
+        // The current-thread executor polls the cancelled fetch while the writer remains held.
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        assert!(
+            !task.is_finished(),
+            "cancellation returned while the old writer was still active"
+        );
+        assert!(!completed.load(Ordering::SeqCst));
+        release.send(()).unwrap();
+        assert!(matches!(task.await.unwrap(), Err(HttpError::Canceled)));
+        assert!(completed.load(Ordering::SeqCst));
     }
 }

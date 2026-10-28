@@ -96,7 +96,16 @@ async fn server(
                     tag
                 );
                 if socket.write_all(head.as_bytes()).await.is_ok() {
-                    let _ = socket.write_all(&data[start..=end]).await;
+                    if delay {
+                        for chunk in data[start..=end].chunks(32 * 1024) {
+                            if socket.write_all(chunk).await.is_err() {
+                                break;
+                            }
+                            tokio::time::sleep(Duration::from_millis(5)).await;
+                        }
+                    } else {
+                        let _ = socket.write_all(&data[start..=end]).await;
+                    }
                 }
             });
         }
@@ -150,6 +159,77 @@ async fn complete(engine: &Engine, id: JobId) -> zeus_types::Job {
     })
     .await
     .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn held_admission_is_durable_and_never_dispatches_before_explicit_resume() {
+    let data = vec![17; 600_000];
+    let server = server(
+        data.clone(),
+        Arc::new(Mutex::new("\"held-v1\"".into())),
+        false,
+        false,
+    )
+    .await;
+    let dir = TempDir::new().unwrap();
+    let first = engine(&dir).await;
+    let req = request(server.url.clone(), &data);
+    let held = first.enqueue_held(req.clone()).await.unwrap();
+    assert_eq!(held.job.state, JobState::Paused);
+    let attempts =
+        futures::future::join_all((0..16).map(|_| first.enqueue_held(req.clone()))).await;
+    for attempt in attempts {
+        let duplicate = attempt.unwrap();
+        assert!(duplicate.deduplicated);
+        assert_eq!(duplicate.job.id, held.job.id);
+        assert_eq!(duplicate.job.state, JobState::Paused);
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(server.requests.lock().unwrap().is_empty());
+    first.shutdown().await.unwrap();
+    drop(first);
+    // A source-record commit may have been interrupted here. The engine must
+    // not promote held work during recovery before that binding is reconciled.
+    let second = engine(&dir).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        second.get(held.job.id).await.unwrap().state,
+        JobState::Paused
+    );
+    assert!(server.requests.lock().unwrap().is_empty());
+    second
+        .control(held.job.id, ControlAction::Resume)
+        .await
+        .unwrap();
+    let completed = complete(&second, held.job.id).await;
+    assert_eq!(
+        completed.state,
+        JobState::Completed,
+        "{:?}",
+        completed.error
+    );
+    assert_eq!(std::fs::read(completed.result.unwrap().path).unwrap(), data);
+    second.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn held_admission_does_not_alias_ordinary_enqueue_or_browser_authority() {
+    let dir = TempDir::new().unwrap();
+    let engine = engine(&dir).await;
+    let req = request(
+        HttpUrl::parse("https://sources.zeus.invalid/object").unwrap(),
+        b"data",
+    );
+    engine.enqueue_held(req.clone()).await.unwrap();
+    assert!(matches!(
+        engine.enqueue(req.clone()).await,
+        Err(zeus_engine::EngineError::IdempotencyConflict)
+    ));
+    let mut browser = req;
+    browser.spec.idempotency_key = Some("browser-held-refusal".into());
+    browser.spec.session_origin = Some(browser.spec.origin());
+    assert!(engine.enqueue_held(browser).await.is_err());
+    engine.shutdown().await.unwrap();
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ranged_download_is_verified_and_idempotent() {
@@ -240,7 +320,7 @@ async fn restart_resumes_only_committed_ranges_under_the_same_validator() {
         requests
             .iter()
             .skip(1)
-            .all(|r| !r.to_ascii_lowercase().contains("range: bytes=0-262143")),
+            .all(|r| !r.to_ascii_lowercase().contains("range: bytes=0-")),
         "{requests:?}"
     );
     second.shutdown().await.unwrap();
@@ -334,7 +414,7 @@ async fn changed_validator_invalidates_previously_committed_bytes() {
             .lock()
             .unwrap()
             .iter()
-            .any(|r| r.to_ascii_lowercase().contains("range: bytes=0-262143"))
+            .any(|r| r.to_ascii_lowercase().contains("range: bytes=0-"))
     );
     second.shutdown().await.unwrap();
 }

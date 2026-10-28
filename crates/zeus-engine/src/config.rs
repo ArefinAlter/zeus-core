@@ -10,6 +10,40 @@ use zeus_types::{ErrorEnvelope, OsMetadataMode, codes};
 
 use crate::error::{EngineError, EngineResult};
 
+/// Optional transfer policy, supplied through `EngineBuilder::transfer_tuning` so existing
+/// embedders can keep constructing `EngineConfig` without a source-breaking new field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferTuning {
+    /// Preferred HTTP range size, 8–32 MiB; durable commit units remain independent.
+    pub segment_bytes: u64,
+    /// Adapt the connection target from measured throughput. False uses the configured ceiling.
+    pub adaptive_concurrency: bool,
+    /// Reassign the unfinished tail of a slow request after its writer has drained.
+    pub work_stealing: bool,
+}
+
+impl Default for TransferTuning {
+    fn default() -> Self {
+        Self {
+            segment_bytes: 16 << 20,
+            adaptive_concurrency: true,
+            work_stealing: true,
+        }
+    }
+}
+
+impl TransferTuning {
+    pub(crate) fn validate(&self) -> EngineResult<()> {
+        if !(8 << 20..=32 << 20).contains(&self.segment_bytes) {
+            return Err(EngineError::Rejected(ErrorEnvelope::from_code(
+                codes::NM_SCHEMA_VIOLATION,
+                "segment size must be between 8 and 32 MiB",
+            )));
+        }
+        Ok(())
+    }
+}
+
 /// Scheduling limits. Defaults and bounds from 01 section 10.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchedulerLimits {
