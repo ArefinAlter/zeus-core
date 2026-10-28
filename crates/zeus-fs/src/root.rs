@@ -2,8 +2,9 @@
 //!
 //! Every destination is canonicalised and must lie inside a configured write root **after resolving
 //! symlinks** (the bug class Playwright MCP fixed in 2025). A [`SafeRoot`] hands out only paths it has
-//! checked, and re-checking at the moment of use (`check_existing`) closes the time-of-check gap
-//! together with the no-follow open flags of [`crate::Filesystem`].
+//! checked. Rechecking before use detects many replacements, but a checked path is not a retained
+//! directory capability: an intermediate directory can change before a later path-based operation.
+//! Opted-in consumers use [`crate::DirectoryCap`] to keep directory authority through the operation.
 
 use std::path::{Path, PathBuf};
 

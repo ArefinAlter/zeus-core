@@ -17,6 +17,8 @@ thiserror.workspace = true
 tracing.workspace = true
 unicode-normalization.workspace = true
 fs4.workspace = true
+cap-std.workspace = true
+cap-fs-ext.workspace = true
 trash.workspace = true
 
 [target.'cfg(unix)'.dependencies]
