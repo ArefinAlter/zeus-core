@@ -102,6 +102,28 @@ pub trait DataFile: Send + Sync + fmt::Debug {
     /// NTFS before extending so a write at a far offset does not zero-fill the gap.
     fn preallocate(&self, len: u64) -> FsResult<PreallocOutcome>;
 
+    /// Metadata from this opened object. Simulated files may use the default stable timestamp.
+    fn metadata(&self) -> FsResult<FileMeta> {
+        Ok(FileMeta {
+            is_regular_file: true,
+            is_dir: false,
+            is_symlink: false,
+            len: self.len()?,
+            mtime_ms: 0,
+            file_id: Some(self.file_id()?),
+        })
+    }
+
+    /// Retained directory and leaf of capability-backed files. Custom filesystems need not opt in.
+    fn retained_location(&self) -> Option<(&crate::DirectoryCap, &std::ffi::OsStr)> {
+        None
+    }
+
+    /// Native opened object, when provided by the real filesystem. No path is reopened.
+    fn native_file(&self) -> Option<&std::fs::File> {
+        None
+    }
+
     /// The identity of the open file object (device and inode, or volume serial and file index).
     fn file_id(&self) -> FsResult<FileId>;
 }
@@ -145,6 +167,37 @@ pub trait Filesystem: Send + Sync + fmt::Debug {
     /// when `to` exists.
     fn rename_noreplace(&self, from: &Path, to: &Path) -> FsResult<()>;
 
+    /// Publish the exact opened file. Capability implementations must retain its parent through
+    /// verification and publication; injected filesystems keep the existing rename seam.
+    fn publish_opened(&self, from: &Path, to: &Path, file: &dyn DataFile) -> FsResult<()> {
+        if self.metadata(from)?.and_then(|m| m.file_id) != Some(file.file_id()?) {
+            return Err(FsError::OutsideRoots);
+        }
+        self.rename_noreplace(from, to)
+    }
+
+    /// Apply OS marks to this opened file. Custom filesystems retain the legacy marker behavior.
+    fn mark_opened(
+        &self,
+        path: &Path,
+        _file: &dyn DataFile,
+        marks: &crate::provenance::ProvenanceMarks,
+        mode: zeus_types::OsMetadataMode,
+    ) -> FsResult<Vec<zeus_types::OsMetadataKind>> {
+        use crate::provenance::ProvenanceMarker;
+        crate::provenance::NativeMarker.apply(path, marks, mode)
+    }
+
+    /// Remove only the object with the expected identity. Capability implementations act on its
+    /// retained handle; the default preserves compatibility with injected simulation filesystems.
+    fn remove_expected(&self, path: &Path, expected: &FileId) -> FsResult<()> {
+        match self.metadata(path)? {
+            None => Ok(()),
+            Some(meta) if meta.file_id.as_ref() == Some(expected) => self.remove_file(path),
+            _ => Err(FsError::OutsideRoots),
+        }
+    }
+
     /// Replaces `to` with `from`, moving the old `to` to `backup` first (overwrite policy `replace`):
     /// `link` then `rename` on Unix, `ReplaceFile` with a backup name on Windows.
     fn replace_with_backup(&self, from: &Path, to: &Path, backup: &Path) -> FsResult<()>;
@@ -186,7 +239,7 @@ impl RealFs {
 }
 
 #[derive(Debug)]
-struct RealDataFile(std::fs::File);
+pub(crate) struct RealDataFile(pub(crate) std::fs::File);
 
 impl DataFile for RealDataFile {
     fn write_all_at(&self, mut offset: u64, mut buf: &[u8]) -> FsResult<()> {
@@ -254,6 +307,12 @@ impl DataFile for RealDataFile {
     }
     fn file_id(&self) -> FsResult<FileId> {
         file_identity(&self.0)
+    }
+    fn metadata(&self) -> FsResult<FileMeta> {
+        crate::opened_file_metadata(&self.0)
+    }
+    fn native_file(&self) -> Option<&std::fs::File> {
+        Some(&self.0)
     }
 }
 

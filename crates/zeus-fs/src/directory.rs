@@ -172,7 +172,21 @@ impl DirectoryCap {
     /// there is not a claim of power-loss durability on the underlying volume.
     pub fn sync(&self) -> FsResult<()> {
         #[cfg(unix)]
-        self.0.dir.try_clone()?.into_std_file().sync_all()?;
+        {
+            // Child capabilities may use O_PATH on Linux. Reopen the held directory itself,
+            // without an ambient pathname, because fsync on O_PATH returns EBADF.
+            let directory = rustix::fs::openat(
+                &self.0.dir,
+                ".",
+                rustix::fs::OFlags::RDONLY
+                    | rustix::fs::OFlags::DIRECTORY
+                    | rustix::fs::OFlags::NOFOLLOW
+                    | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+            )
+            .map_err(std::io::Error::from)?;
+            rustix::fs::fsync(&directory).map_err(std::io::Error::from)?;
+        }
         Ok(())
     }
 
@@ -233,6 +247,7 @@ impl DirectoryCap {
         &self,
         name: &OsStr,
         create: bool,
+        write: bool,
         rename: bool,
         directories: bool,
     ) -> FsResult<std::fs::File> {
@@ -240,7 +255,7 @@ impl DirectoryCap {
         let mut options = OpenOptions::new();
         options
             .read(true)
-            .write(create)
+            .write(write)
             .create_new(create)
             .follow(FollowSymlinks::No)
             .maybe_dir(directories);
@@ -257,7 +272,10 @@ impl DirectoryCap {
         {
             use cap_std::fs::OpenOptionsExt;
             use windows_sys::Win32::Storage::FileSystem::*;
-            if create {
+            // Read-only observations keep their opened object, and may coexist with a writer's
+            // DELETE-capable handle. Writes and rename sources below still deny delete sharing.
+            options.share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE);
+            if write {
                 options
                     .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE)
                     .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
@@ -282,9 +300,20 @@ impl DirectoryCap {
         Ok(file)
     }
 
+    fn open_observation(&self, name: &OsStr) -> FsResult<std::fs::File> {
+        // cap-primitives removes FILE_SHARE_DELETE for maybe-directory handles. Try a regular
+        // file first so observations can coexist with its retained DELETE-capable writer.
+        // The fallback is still a no-follow open; held directory parents remain pinned.
+        #[cfg(windows)]
+        if let Ok(file) = self.open(name, false, false, false, false) {
+            return Ok(file);
+        }
+        self.open(name, false, false, false, true)
+    }
+
     /// Inspect a regular file or directory through a read-only no-follow handle.
     pub fn entry_metadata(&self, name: &OsStr) -> FsResult<FileMeta> {
-        opened_file_metadata(&self.open(name, false, false, true)?)
+        opened_file_metadata(&self.open_observation(name)?)
     }
 
     /// Whether a child entry exists, including a final link. Errors other than absence propagate.
@@ -301,7 +330,7 @@ impl DirectoryCap {
     /// OS metadata from an opened, no-follow regular file or directory. Preserves native
     /// hidden/system flags for metadata indexes without a later ambient-path stat.
     pub fn entry_os_metadata(&self, name: &OsStr) -> FsResult<std::fs::Metadata> {
-        Ok(self.open(name, false, false, true)?.metadata()?)
+        Ok(self.open_observation(name)?.metadata()?)
     }
 
     /// Stream child names without following entries or retaining a directory-sized vector.
@@ -324,12 +353,80 @@ impl DirectoryCap {
 
     /// Open an existing regular file read-only without following its final component.
     pub fn open_read(&self, name: &OsStr) -> FsResult<std::fs::File> {
-        self.open(name, false, false, false)
+        self.open(name, false, false, false, false)
+    }
+
+    /// Open an existing regular file for data writes, without following its name. Windows keeps
+    /// DELETE access and denies delete sharing, so publication can act on this same object.
+    pub fn open_existing(&self, name: &OsStr) -> FsResult<std::fs::File> {
+        self.open(name, false, true, false, false)
+    }
+
+    /// Publish this opened regular file without replacing a destination. The source parent remains
+    /// retained. Unix checks the current source identity before its relative rename.
+    pub fn publish_opened(
+        &self,
+        name: &OsStr,
+        file: &std::fs::File,
+        destination: &DirectoryCap,
+        target: &OsStr,
+    ) -> FsResult<()> {
+        leaf(name)?;
+        leaf(target)?;
+        let source = RenameSource {
+            _parent: self.clone(),
+            file: file.try_clone()?,
+            #[cfg(not(windows))]
+            name: name.to_owned(),
+        };
+        if !source.metadata()?.is_regular_file {
+            return Err(FsError::SymlinkRefused);
+        }
+        source.rename_noreplace(destination, target)
+    }
+
+    /// Apply native provenance through the retained object and parent. The Windows stream name
+    /// is fixed internally; no caller-supplied alternate-data-stream path is accepted.
+    pub fn mark_opened(
+        &self,
+        name: &OsStr,
+        file: &std::fs::File,
+        marks: &crate::provenance::ProvenanceMarks,
+        mode: zeus_types::OsMetadataMode,
+    ) -> FsResult<Vec<zeus_types::OsMetadataKind>> {
+        leaf(name)?;
+        if mode == zeus_types::OsMetadataMode::Off {
+            return Ok(Vec::new());
+        }
+        if !opened_file_metadata(file)?.is_regular_file {
+            return Err(FsError::SymlinkRefused);
+        }
+        #[cfg(windows)]
+        {
+            crate::sys::mark_retained(&self.0.dir, name, file, marks, mode)
+        }
+        #[cfg(unix)]
+        {
+            crate::provenance::mark_opened(file, marks, mode)
+        }
+    }
+
+    /// Free bytes on the volume of this retained directory. This is advisory admission information.
+    pub fn free_space(&self) -> FsResult<u64> {
+        #[cfg(unix)]
+        {
+            let stat = rustix::fs::fstatvfs(&self.0.dir).map_err(std::io::Error::from)?;
+            Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
+        }
+        #[cfg(windows)]
+        {
+            crate::sys::directory_free_space(&self.0.dir)
+        }
     }
 
     /// Exclusively create a regular file (0600 on Unix). Never follows or replaces a target.
     pub fn create_new(&self, name: &OsStr) -> FsResult<std::fs::File> {
-        self.open(name, true, false, false)
+        self.open(name, true, true, false, false)
     }
 
     /// Discard a file created by [`Self::create_new`]. Windows deletes the held object on close;
@@ -353,7 +450,7 @@ impl DirectoryCap {
     /// Open and retain the item which a subsequent no-replace rename must move.
     pub fn prepare_rename(&self, name: &OsStr) -> FsResult<RenameSource> {
         Ok(RenameSource {
-            file: self.open(name, false, true, true)?,
+            file: self.open(name, false, false, true, true)?,
             _parent: self.clone(),
             #[cfg(not(windows))]
             name: name.to_owned(),
@@ -388,7 +485,7 @@ impl RenameSource {
         }
         #[cfg(unix)]
         {
-            let current = self._parent.open(&self.name, false, true, true)?;
+            let current = self._parent.open(&self.name, false, false, true, true)?;
             if file_identity(&current)? != *expected {
                 return Err(FsError::OutsideRoots);
             }
@@ -422,7 +519,7 @@ impl RenameSource {
             target_os = "redox"
         ))]
         {
-            let current = self._parent.open(&self.name, false, true, true)?;
+            let current = self._parent.open(&self.name, false, false, true, true)?;
             if file_identity(&current)? != file_identity(&self.file)? {
                 return Err(FsError::OutsideRoots);
             }

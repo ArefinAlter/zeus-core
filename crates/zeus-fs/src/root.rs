@@ -28,6 +28,11 @@ impl SafeRoot {
         Ok(Self { root, identity })
     }
 
+    /// Identity recorded when this configured root was admitted.
+    pub fn identity(&self) -> Option<&zeus_types::FileId> {
+        self.identity.as_ref()
+    }
+
     /// The canonical root path.
     #[must_use]
     pub fn path(&self) -> &Path {

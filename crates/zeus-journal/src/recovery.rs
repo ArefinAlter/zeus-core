@@ -1,8 +1,9 @@
 //! Recovery on startup (03 section 10) and the local resume checks (03 section 7.2).
 //!
 //! `zeusd` runs [`recover`] before accepting any connection. Every step is idempotent: a crash during
-//! recovery followed by another recovery gives the same result (invariant I11). Hashing is never
-//! performed during recovery; it happens later, in `verifying`.
+//! recovery followed by another recovery gives the same result (invariant I11). Ordinary resume
+//! hashes later in `verifying`; a pending finalization rechecks its opened bytes within one shared
+//! startup budget before publishing or accepting a previously renamed file.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -45,6 +46,28 @@ impl std::fmt::Debug for RecoveryContext {
 /// files, expire grants and approvals, prune retention. Step 6 (outbox replay into the audit log and the
 /// manifest) is driven by the daemon from the cursors in `meta`. Returns the summary for `daemon.started`.
 pub fn recover(journal: &Journal, context: &RecoveryContext) -> JournalResult<RecoverySummary> {
+    recover_limited(
+        journal,
+        context,
+        &mut FinalizationBudget {
+            remaining: u64::MAX,
+            deadline: std::time::Instant::now() + Duration::from_secs(120),
+        },
+    )
+}
+
+// One deadline for the entire startup, never a new deadline per job. The byte allowance also lets
+// deterministic regressions exercise exhaustion without sleeping or relying on machine speed.
+struct FinalizationBudget {
+    remaining: u64,
+    deadline: std::time::Instant,
+}
+
+fn recover_limited(
+    journal: &Journal,
+    context: &RecoveryContext,
+    budget: &mut FinalizationBudget,
+) -> JournalResult<RecoverySummary> {
     use crate::journal::TransitionRequest;
     use zeus_types::event::*;
     use zeus_types::*;
@@ -60,8 +83,19 @@ pub fn recover(journal: &Journal, context: &RecoveryContext) -> JournalResult<Re
             journal.faults().as_ref(),
             crate::fault::CrashPoint::DuringRecovery,
         )?;
-        // Complete an interrupted atomic rename by file identity before scheduling any new network work.
-        if record.internal.finalize.is_some() && recover_finalization(journal, context, &record)? {
+        // Failed receipts stay held for explicit review; startup never retries their effects.
+        if record.job.state == JobState::Finalizing
+            && record.internal.finalize.is_some()
+            && recover_finalization(journal, context, &record, budget)?
+        {
+            if journal
+                .job(record.id())?
+                .is_some_and(|r| r.job.state == JobState::Failed)
+            {
+                summary.jobs_failed += 1;
+            } else {
+                summary.jobs_recovered += 1;
+            }
             continue;
         }
         if !record.job.state.is_in_flight() {
@@ -164,8 +198,13 @@ pub fn recover(journal: &Journal, context: &RecoveryContext) -> JournalResult<Re
                 continue;
             }
             summary.orphans_found += 1;
-            if entry.meta.len == 0 || entry.meta.mtime_ms < oldest {
-                context.fs.remove_file(&entry.path).map_err(fs_error)?;
+            if (entry.meta.len == 0 || entry.meta.mtime_ms < oldest)
+                && let Some(identity) = &entry.meta.file_id
+            {
+                context
+                    .fs
+                    .remove_expected(&entry.path, identity)
+                    .map_err(fs_error)?;
             }
         }
     }
@@ -336,6 +375,7 @@ fn recover_finalization(
     journal: &Journal,
     context: &RecoveryContext,
     record: &JobRecord,
+    budget: &mut FinalizationBudget,
 ) -> JournalResult<bool> {
     use zeus_fs::finalize::*;
     use zeus_types::*;
@@ -347,24 +387,80 @@ fn recover_finalization(
             "finalize intent lacks verification",
         ));
     };
+    // Once the shared allowance is exhausted, do not open more candidate paths at all.
+    if std::time::Instant::now() >= budget.deadline || verify.size_bytes > budget.remaining {
+        fail_finalization(journal, record, finalization_budget_error())?;
+        return Ok(true);
+    }
     let tmp = std::path::Path::new(&intent.tmp_path);
     let dest = std::path::Path::new(&intent.dest_path);
-    let observed = FinalizeObservation {
-        tmp: context
-            .fs
-            .metadata(tmp)
-            .map_err(fs_error)?
-            .and_then(|m| m.file_id),
-        dest: context
-            .fs
-            .metadata(dest)
-            .map_err(fs_error)?
-            .and_then(|m| m.file_id),
+    let observed = (|| -> zeus_fs::FsResult<FinalizeObservation> {
+        Ok(FinalizeObservation {
+            tmp: context.fs.metadata(tmp)?.and_then(|m| m.file_id),
+            dest: context.fs.metadata(dest)?.and_then(|m| m.file_id),
+        })
+    })();
+    let observed = match observed {
+        Ok(observed) => observed,
+        Err(_) => {
+            fail_finalization(
+                journal,
+                record,
+                ErrorEnvelope::from_code(
+                    codes::FS_IO_ERROR,
+                    "Interrupted finalization cannot inspect its retained paths; files and receipt are preserved for review.",
+                ),
+            )?;
+            return Ok(true);
+        }
     };
+    let action = decide_recovery(&observed, &intent.file_id);
+    if action == RecoveryAction::Lost {
+        fail_finalization(
+            journal,
+            record,
+            ErrorEnvelope::from_code(
+                codes::FS_FINALIZE_LOST,
+                "Verified file identity cannot be recovered; files and receipt are preserved for review.",
+            ),
+        )?;
+        return Ok(true);
+    }
+    let candidate = if action == RecoveryAction::ContinueAfterRename {
+        dest
+    } else {
+        tmp
+    };
+    let opened = if action == RecoveryAction::ContinueAfterRename {
+        context.fs.open_read(candidate)
+    } else {
+        context.fs.open_existing(candidate)
+    };
+    let file = match opened {
+        Ok(file) => file,
+        Err(_) => {
+            fail_finalization(
+                journal,
+                record,
+                ErrorEnvelope::from_code(
+                    codes::FS_IO_ERROR,
+                    "Interrupted finalization cannot open its retained file; files and receipt are preserved for review.",
+                ),
+            )?;
+            return Ok(true);
+        }
+    };
+    if let Err(error) = recheck_finalized(file.as_ref(), &intent.file_id, verify, budget) {
+        fail_finalization(journal, record, error)?;
+        return Ok(true);
+    }
     let mut target = dest.to_path_buf();
-    match decide_recovery(&observed, &intent.file_id) {
+    match action {
         RecoveryAction::RepeatRename => {
-            context.fs.rename_noreplace(tmp, dest).map_err(fs_error)?;
+            context
+                .fs
+                .publish_opened(tmp, dest, file.as_ref())
+                .map_err(fs_error)?;
         }
         RecoveryAction::ContinueAfterRename => {}
         RecoveryAction::PickNewName => {
@@ -404,42 +500,10 @@ fn recover_finalization(
             })?;
             context
                 .fs
-                .rename_noreplace(tmp, &target)
+                .publish_opened(tmp, &target, file.as_ref())
                 .map_err(fs_error)?;
         }
-        RecoveryAction::Lost => {
-            let error = ErrorEnvelope::from_code(
-                codes::FS_FINALIZE_LOST,
-                "verified file identity cannot be recovered",
-            );
-            journal.apply_transition(
-                crate::TransitionRequest {
-                    job_id: record.id(),
-                    transition: "S82",
-                    trigger: TransitionActor::Engine,
-                    cause: StateCause::FinalizeError,
-                    actor: Actor::system(),
-                    now: journal.clock().now(),
-                    events_before: vec![],
-                    events_after: vec![
-                        zeus_types::event::JobFailedData {
-                            error: error.clone(),
-                            suggested_next: zeus_types::event::SuggestedNext {
-                                action: zeus_types::event::SuggestedAction::FixDestination,
-                                tool: None,
-                            },
-                        }
-                        .into(),
-                    ],
-                },
-                &mut |r| {
-                    r.job.error = Some(error.clone());
-                    r.internal.finalize = None;
-                    Ok(())
-                },
-            )?;
-            return Ok(true);
-        }
+        RecoveryAction::Lost => unreachable!("handled before opening the candidate"),
     }
     context
         .fs
@@ -498,6 +562,122 @@ fn recover_finalization(
     Ok(true)
 }
 
+fn fail_finalization(
+    journal: &Journal,
+    record: &JobRecord,
+    error: zeus_types::ErrorEnvelope,
+) -> JournalResult<()> {
+    use zeus_types::*;
+    journal.apply_transition(
+        crate::TransitionRequest {
+            job_id: record.id(),
+            transition: "S82",
+            trigger: TransitionActor::Engine,
+            cause: StateCause::FinalizeError,
+            actor: Actor::system(),
+            now: journal.clock().now(),
+            events_before: vec![],
+            events_after: vec![
+                event::JobFailedData {
+                    error: error.clone(),
+                    suggested_next: event::SuggestedNext {
+                        action: event::SuggestedAction::FixDestination,
+                        tool: None,
+                    },
+                }
+                .into(),
+            ],
+        },
+        &mut |r| {
+            r.job.error = Some(error.clone());
+            // Keep finalize + verify_result and the owned partial identity. No data is removed and
+            // subsequent startup leaves this failed receipt held until a person explicitly acts.
+            Ok(())
+        },
+    )?;
+    Ok(())
+}
+
+fn finalization_budget_error() -> zeus_types::ErrorEnvelope {
+    zeus_types::ErrorEnvelope::from_code(
+        zeus_types::codes::FS_BUSY,
+        "Interrupted finalization exhausted the shared startup verification budget; files and receipt are preserved for review.",
+    )
+}
+
+fn recheck_finalized(
+    file: &dyn zeus_fs::DataFile,
+    expected_id: &zeus_types::FileId,
+    expected: &crate::records::VerifyResult,
+    budget: &mut FinalizationBudget,
+) -> Result<(), zeus_types::ErrorEnvelope> {
+    use zeus_types::{ErrorEnvelope, codes};
+    let unavailable = || {
+        ErrorEnvelope::from_code(
+            codes::FS_IO_ERROR,
+            "Interrupted finalization could not read its retained file; files and receipt are preserved for review.",
+        )
+    };
+    let changed = || {
+        ErrorEnvelope::from_code(
+            codes::INTEGRITY_HASH_MISMATCH,
+            "Interrupted finalization no longer matches its verified bytes; files and receipt are preserved for review.",
+        )
+    };
+
+    if std::time::Instant::now() >= budget.deadline || expected.size_bytes > budget.remaining {
+        return Err(finalization_budget_error());
+    }
+    let before = file.metadata().map_err(|_| unavailable())?;
+    if before.file_id.as_ref() != Some(expected_id)
+        || !before.is_regular_file
+        || before.len != expected.size_bytes
+    {
+        return Err(changed());
+    }
+    let modified = || {
+        file.native_file()
+            .map(|f| f.metadata().and_then(|m| m.modified()))
+            .transpose()
+            .map_err(|_| unavailable())
+    };
+    let before_modified = modified()?;
+    let mut hash = zeus_verify::hash::DualHasher::new();
+    let mut bytes = vec![0; 1 << 20];
+    let mut offset = 0;
+    while offset < before.len {
+        if std::time::Instant::now() >= budget.deadline {
+            return Err(finalization_budget_error());
+        }
+        let requested = (before.len - offset).min(bytes.len() as u64) as usize;
+        let n = file
+            .read_at(offset, &mut bytes[..requested])
+            .map_err(|_| unavailable())?;
+        if n == 0 || n > requested {
+            return Err(changed());
+        }
+        budget.remaining = budget
+            .remaining
+            .checked_sub(n as u64)
+            .ok_or_else(finalization_budget_error)?;
+        hash.update(&bytes[..n]);
+        offset += n as u64;
+    }
+    if std::time::Instant::now() >= budget.deadline {
+        return Err(finalization_budget_error());
+    }
+    let digest = hash.finalize();
+    if before != file.metadata().map_err(|_| unavailable())?
+        || before_modified != modified()?
+        || digest.size_bytes != expected.size_bytes
+        || digest.sha256 != expected.sha256
+        || digest.blake3 != expected.blake3
+    {
+        return Err(changed());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -507,3 +687,7 @@ mod tests {
         assert_eq!(DEFAULT_ORPHAN_GC_AGE.as_secs(), 604_800);
     }
 }
+
+#[cfg(test)]
+#[path = "recovery_retained_tests.rs"]
+mod retained_tests;
