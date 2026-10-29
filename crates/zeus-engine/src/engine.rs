@@ -2226,10 +2226,11 @@ impl Engine {
         let committed = self.inner.journal.committed(id)?;
         if !committed.is_empty()
             && (probe.result.range_support != RangeSupport::Verified
-                || !record.internal.bound_validators.is_strongly_identified()
-                || record.internal.bound_validators.if_range_value()
-                    != probe.result.validators.if_range_value()
-                || record.internal.total_bytes != probe.result.total_bytes)
+                || record.internal.total_bytes != probe.result.total_bytes
+                || (record.internal.bound_validators.is_strongly_identified()
+                    && probe.result.validators.is_strongly_identified()
+                    && record.internal.bound_validators.if_range_value()
+                        != probe.result.validators.if_range_value()))
         {
             self.inner.journal.invalidate_all(
                 id,
@@ -2295,7 +2296,20 @@ impl Engine {
                 Ok(())
             },
         )?;
-        if probe.result.range_support == RangeSupport::Verified
+        if probe.result.total_bytes == Some(0) {
+            self.transition(
+                id,
+                "S20",
+                TransitionActor::Engine,
+                StateCause::AllCommitted,
+                vec![],
+                vec![],
+                |r| {
+                    r.internal.data_complete = true;
+                    Ok(())
+                },
+            )?;
+        } else if probe.result.range_support == RangeSupport::Verified
             && probe.result.total_bytes.is_some()
         {
             let total = probe.result.total_bytes.unwrap_or(0);
@@ -2325,10 +2339,27 @@ impl Engine {
                 cancel,
             )
             .await?;
-        } else if let Some(mut body) = probe.body {
-            let mut buffer =
-                Vec::with_capacity(self.inner.config.commit.commit_unit_bytes as usize);
-            let mut offset = 0u64;
+        } else {
+            let mut body_opt = probe.body;
+            if body_opt.is_none() {
+                let (response, _, _) = zeus_http::send_following(
+                    &transport,
+                    probe.resolved_url.clone(),
+                    &spec.extra_headers,
+                    session.as_ref(),
+                    None,
+                    None,
+                    self.inner.config.timeouts.probe,
+                    self.inner.config.timeouts.read,
+                    cancel,
+                )
+                .await?;
+                body_opt = Some(response.body);
+            }
+            if let Some(mut body) = body_opt {
+                let mut buffer =
+                    Vec::with_capacity(self.inner.config.commit.commit_unit_bytes as usize);
+                let mut offset = 0u64;
             loop {
                 if session.as_ref().is_some_and(|b| {
                     b.material.issued_at.saturating_add_ms(b.material.ttl_ms)
@@ -2412,25 +2443,13 @@ impl Engine {
                     |_| Ok(()),
                 )?;
             }
-        } else if probe.result.total_bytes == Some(0) {
-            self.transition(
-                id,
-                "S20",
-                TransitionActor::Engine,
-                StateCause::AllCommitted,
-                vec![],
-                vec![],
-                |r| {
-                    r.internal.data_complete = true;
-                    Ok(())
-                },
-            )?;
         } else {
             return Err(rejected(
                 codes::HTTP_PROTOCOL_ERROR,
                 "resource has no usable download stream",
             ));
         }
+    }
         if cancel.is_cancelled() {
             return Err(HttpError::Canceled.into());
         }
