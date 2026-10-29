@@ -23,8 +23,9 @@ pub mod finalize;
 pub mod fs;
 pub mod names;
 pub mod provenance;
-pub mod root;
 pub mod retained;
+pub mod root;
+pub mod storage;
 pub mod trash;
 
 pub use directory::{DirectoryCap, RenameSource, opened_file_metadata};
@@ -36,8 +37,8 @@ pub use names::{
     CollisionStrategy, SanitizeOptions, SanitizeReason, SanitizedName, sanitize_filename,
     unique_name,
 };
-pub use root::{SafeRoot, WriteRoots};
 pub use retained::RetainedFs;
+pub use root::{SafeRoot, WriteRoots};
 
 #[cfg(windows)]
 mod sys;

@@ -327,6 +327,19 @@ impl DirectoryCap {
         }
     }
 
+    /// Read OS metadata and optional storage accounting from the same no-follow opened object.
+    /// Unsupported allocation information stays unknown, never replaced by logical file length.
+    pub fn entry_observation(&self, name: &OsStr) -> FsResult<crate::storage::EntryObservation> {
+        let file = self.open_observation(name)?;
+        let metadata = file.metadata()?;
+        let storage = if metadata.is_file() && !is_reparse(&metadata) {
+            crate::storage::observe(&file, &metadata).ok()
+        } else {
+            None
+        };
+        Ok(crate::storage::EntryObservation { metadata, storage })
+    }
+
     /// OS metadata from an opened, no-follow regular file or directory. Preserves native
     /// hidden/system flags for metadata indexes without a later ambient-path stat.
     pub fn entry_os_metadata(&self, name: &OsStr) -> FsResult<std::fs::Metadata> {
