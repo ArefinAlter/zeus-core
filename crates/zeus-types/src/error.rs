@@ -337,6 +337,13 @@ error_codes! {
     ENGINE_SHUTDOWN = "engine.shutdown", Unavailable, true;
     API_INVALID_PARAMS = "api.invalid_params", InvalidRequest, false;
     WORKFLOW_BUDGET_EXHAUSTED = "workflow.budget_exhausted", PolicyDenied, false;
+    // 08 section 10.3: bounded, reviewed JSONL item exports.
+    WORKFLOW_ITEMS_AUTHORITY = "workflow.items_authority", PolicyDenied, false;
+    WORKFLOW_ITEMS_CHANGED = "workflow.items_changed", Integrity, false;
+    WORKFLOW_ITEMS_LIMIT = "workflow.items_limit", PolicyDenied, false;
+    WORKFLOW_ITEMS_UNAVAILABLE = "workflow.items_unavailable", Disk, false;
+    WORKFLOW_ITEMS_VERIFY_TIMEOUT = "workflow.items_verify_timeout", Unavailable, false;
+    WORKFLOW_ITEMS_PENDING = "workflow.items_pending", Unavailable, false;
     API_IDEMPOTENCY_CONFLICT = "api.idempotency_conflict", Conflict, false;
     API_NOT_FOUND = "api.not_found", NotFound, false;
     API_HUMAN_REQUIRED = "api.human_required", PolicyDenied, false;

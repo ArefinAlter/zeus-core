@@ -424,6 +424,36 @@ impl DirectoryCap {
         }
     }
 
+    /// Open an existing regular file for checked append/recovery without following links.
+    /// This never creates or truncates a file. The caller must compare the opened identity and
+    /// durable offset before writing. Windows denies concurrent write/delete sharing.
+    pub fn open_write_existing(&self, name: &OsStr) -> FsResult<std::fs::File> {
+        leaf(name)?;
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).follow(FollowSymlinks::No);
+        #[cfg(unix)]
+        {
+            use cap_std::fs::OpenOptionsExt;
+            options.custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32);
+        }
+        #[cfg(windows)]
+        {
+            use cap_std::fs::OpenOptionsExt;
+            use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+            options.share_mode(FILE_SHARE_READ);
+        }
+        let file = self
+            .0
+            .dir
+            .open_with(name, &options)
+            .map_err(io_error)?
+            .into_std();
+        if !opened_file_metadata(&file)?.is_regular_file {
+            return Err(FsError::InvalidName("a regular file is required"));
+        }
+        Ok(file)
+    }
+
     /// Exclusively create a regular file (0600 on Unix). Never follows or replaces a target.
     pub fn create_new(&self, name: &OsStr) -> FsResult<std::fs::File> {
         self.open(name, true, true, false, false)
@@ -555,6 +585,49 @@ mod tests {
     use std::io::Write;
     fn os(s: &str) -> &OsStr {
         OsStr::new(s)
+    }
+
+    #[test]
+    fn existing_writer_never_creates_truncates_or_accepts_non_file_targets() {
+        use std::io::{Read, Seek, SeekFrom};
+        let temp = tempfile::tempdir().unwrap();
+        let cap = DirectoryCap::open_root(temp.path()).unwrap();
+        assert!(cap.open_write_existing(os("absent")).is_err());
+        assert!(!temp.path().join("absent").exists());
+        cap.create_dir(os("folder")).unwrap();
+        assert!(cap.open_write_existing(os("folder")).is_err());
+        cap.create_new(os("sink"))
+            .unwrap()
+            .write_all(b"prefix")
+            .unwrap();
+        let mut f = cap.open_write_existing(os("sink")).unwrap();
+        let mut data = String::new();
+        f.read_to_string(&mut data).unwrap();
+        assert_eq!(data, "prefix");
+        f.seek(SeekFrom::End(0)).unwrap();
+        f.write_all(b"-tail").unwrap();
+        drop(f);
+        assert_eq!(
+            std::fs::read(temp.path().join("sink")).unwrap(),
+            b"prefix-tail"
+        );
+        assert!(cap.open_write_existing(os("../sink")).is_err());
+        #[cfg(windows)]
+        {
+            let _held = cap.open_write_existing(os("sink")).unwrap();
+            assert!(
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(temp.path().join("sink"))
+                    .is_err()
+            );
+            assert!(std::fs::rename(temp.path().join("sink"), temp.path().join("moved")).is_err());
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(temp.path().join("sink"), temp.path().join("link")).unwrap();
+            assert!(cap.open_write_existing(os("link")).is_err());
+        }
     }
 
     #[test]
