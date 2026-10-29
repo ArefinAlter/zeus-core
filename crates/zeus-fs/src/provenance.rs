@@ -136,6 +136,40 @@ pub fn zone_identifier_text(marks: &ProvenanceMarks, mode: OsMetadataMode) -> Op
     }
 }
 
+/// Apply native Unix attributes to the already opened object, without reopening an ambient path.
+#[cfg(unix)]
+pub(crate) fn mark_opened(
+    file: &std::fs::File,
+    marks: &ProvenanceMarks,
+    mode: OsMetadataMode,
+) -> FsResult<Vec<OsMetadataKind>> {
+    use xattr::FileExt;
+    if mode == OsMetadataMode::Off {
+        return Ok(Vec::new());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let quarantine = format!("0083;{:08x};Zeus;", marks.retrieved_at_unix_s);
+        file.set_xattr("com.apple.quarantine", quarantine.as_bytes())?;
+        Ok(vec![OsMetadataKind::QuarantineXattr])
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut written = Vec::new();
+        if mode == OsMetadataMode::Full {
+            if let Some(url) = &marks.origin_url {
+                file.set_xattr("user.xdg.origin.url", url.to_string().as_bytes())?;
+                written.push(OsMetadataKind::XdgOriginUrl);
+            }
+            if let Some(url) = &marks.referrer_url {
+                file.set_xattr("user.xdg.referrer.url", url.to_string().as_bytes())?;
+                written.push(OsMetadataKind::XdgReferrerUrl);
+            }
+        }
+        Ok(written)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,39 +203,5 @@ mod tests {
             .apply(Path::new("x"), &marks(), OsMetadataMode::Full)
             .unwrap();
         assert!(written.is_empty());
-    }
-}
-
-/// Apply native Unix attributes to the already opened object, without reopening an ambient path.
-#[cfg(unix)]
-pub(crate) fn mark_opened(
-    file: &std::fs::File,
-    marks: &ProvenanceMarks,
-    mode: OsMetadataMode,
-) -> FsResult<Vec<OsMetadataKind>> {
-    use xattr::FileExt;
-    if mode == OsMetadataMode::Off {
-        return Ok(Vec::new());
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let quarantine = format!("0083;{:08x};Zeus;", marks.retrieved_at_unix_s);
-        file.set_xattr("com.apple.quarantine", quarantine.as_bytes())?;
-        Ok(vec![OsMetadataKind::QuarantineXattr])
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let mut written = Vec::new();
-        if mode == OsMetadataMode::Full {
-            if let Some(url) = &marks.origin_url {
-                file.set_xattr("user.xdg.origin.url", url.to_string().as_bytes())?;
-                written.push(OsMetadataKind::XdgOriginUrl);
-            }
-            if let Some(url) = &marks.referrer_url {
-                file.set_xattr("user.xdg.referrer.url", url.to_string().as_bytes())?;
-                written.push(OsMetadataKind::XdgReferrerUrl);
-            }
-        }
-        Ok(written)
     }
 }
