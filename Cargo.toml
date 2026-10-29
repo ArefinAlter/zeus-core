@@ -109,7 +109,7 @@ trash = "5.2"
 libc = "0.2"
 rustix = { version = "1", features = ["fs"] }
 xattr = "1.6"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO", "Wdk_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO", "Wdk_Storage_FileSystem", "Wdk_Foundation", "Win32_Security"] }
 
 # ---- test and bench only ----
 tempfile = "3.27"

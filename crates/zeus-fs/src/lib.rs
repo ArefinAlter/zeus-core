@@ -24,6 +24,7 @@ pub mod fs;
 pub mod names;
 pub mod provenance;
 pub mod root;
+pub mod retained;
 pub mod trash;
 
 pub use directory::{DirectoryCap, RenameSource, opened_file_metadata};
@@ -36,6 +37,7 @@ pub use names::{
     unique_name,
 };
 pub use root::{SafeRoot, WriteRoots};
+pub use retained::RetainedFs;
 
 #[cfg(windows)]
 mod sys;

@@ -141,3 +141,122 @@ pub(crate) fn replace(from: &Path, to: &Path, backup: &Path) -> FsResult<()> {
     }
     Ok(())
 }
+
+/// Write the fixed ADS through its retained parent while the original file's handle denies delete
+/// sharing. Identity is compared before truncation. The opened stream must belong to that object.
+pub(crate) fn mark_retained(
+    parent: &cap_std::fs::Dir,
+    name: &std::ffi::OsStr,
+    source: &std::fs::File,
+    marks: &crate::provenance::ProvenanceMarks,
+    mode: zeus_types::OsMetadataMode,
+) -> FsResult<Vec<zeus_types::OsMetadataKind>> {
+    use std::{io::Write, os::windows::io::FromRawHandle};
+    use windows_sys::{
+        Wdk::{
+            Foundation::OBJECT_ATTRIBUTES,
+            Storage::FileSystem::{
+                FILE_NON_DIRECTORY_FILE, FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT,
+                FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+            },
+        },
+        Win32::{
+            Foundation::{RtlNtStatusToDosError, UNICODE_STRING},
+            System::IO::IO_STATUS_BLOCK,
+        },
+    };
+    let mut stream = name.to_os_string();
+    stream.push(":Zone.Identifier");
+    let mut encoded: Vec<u16> = stream.encode_wide().collect();
+    let bytes = u16::try_from(encoded.len() * 2)
+        .map_err(|_| FsError::InvalidName("stream name too long"))?;
+    let unicode = UNICODE_STRING {
+        Length: bytes,
+        MaximumLength: bytes,
+        Buffer: encoded.as_mut_ptr(),
+    };
+    let attributes = OBJECT_ATTRIBUTES {
+        Length: std::mem::size_of::<OBJECT_ATTRIBUTES>() as u32,
+        RootDirectory: parent.as_raw_handle(),
+        ObjectName: &unicode,
+        Attributes: 0,
+        SecurityDescriptor: std::ptr::null(),
+        SecurityQualityOfService: std::ptr::null(),
+    };
+    let mut handle = std::ptr::null_mut();
+    let mut io = IO_STATUS_BLOCK::default();
+    // SAFETY: all pointers refer to live aligned storage. The stream name is a validated leaf plus
+    // a fixed suffix, relative to the held parent. Synchronous open returns before storage drops.
+    let status = unsafe {
+        NtCreateFile(
+            &mut handle,
+            FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+            &attributes,
+            &mut io,
+            std::ptr::null(),
+            FILE_ATTRIBUTE_NORMAL,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_OPEN_IF,
+            FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
+            std::ptr::null(),
+            0,
+        )
+    };
+    if status < 0 {
+        return Err(std::io::Error::from_raw_os_error(
+            unsafe { RtlNtStatusToDosError(status) } as i32
+        )
+        .into());
+    }
+    // SAFETY: successful NtCreateFile transfers the one owned handle into File, closed on drop.
+    let mut output = unsafe { std::fs::File::from_raw_handle(handle) };
+    if file_identity(&output)? != file_identity(source)? {
+        return Err(FsError::OutsideRoots);
+    }
+    output.set_len(0)?;
+    output.write_all(
+        crate::provenance::zone_identifier_text(marks, mode)
+            .unwrap_or_default()
+            .as_bytes(),
+    )?;
+    output.sync_all()?;
+    Ok(vec![zeus_types::OsMetadataKind::ZoneIdentifier])
+}
+
+pub(crate) fn directory_free_space(parent: &cap_std::fs::Dir) -> FsResult<u64> {
+    use windows_sys::{
+        Wdk::Storage::FileSystem::{FileFsFullSizeInformation, NtQueryVolumeInformationFile},
+        Win32::{Foundation::RtlNtStatusToDosError, System::IO::IO_STATUS_BLOCK},
+    };
+    // FILE_FS_FULL_SIZE_INFORMATION's documented C layout (three LARGE_INTEGER, two ULONG).
+    #[repr(C, align(8))]
+    #[derive(Default)]
+    struct FullSize {
+        total: i64,
+        caller_available: i64,
+        actual_available: i64,
+        sectors: u32,
+        bytes: u32,
+    }
+    let mut size = FullSize::default();
+    let mut io = IO_STATUS_BLOCK::default();
+    // SAFETY: synchronous live directory handle and fully sized writable C-layout output.
+    let status = unsafe {
+        NtQueryVolumeInformationFile(
+            parent.as_raw_handle(),
+            &mut io,
+            (&mut size as *mut FullSize).cast(),
+            std::mem::size_of::<FullSize>() as u32,
+            FileFsFullSizeInformation,
+        )
+    };
+    if status < 0 {
+        return Err(std::io::Error::from_raw_os_error(
+            unsafe { RtlNtStatusToDosError(status) } as i32
+        )
+        .into());
+    }
+    Ok((size.caller_available.max(0) as u64)
+        .saturating_mul(size.sectors as u64)
+        .saturating_mul(size.bytes as u64))
+}

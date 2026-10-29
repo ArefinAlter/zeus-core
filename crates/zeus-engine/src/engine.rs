@@ -56,6 +56,7 @@ pub struct EngineBuilder {
     pub(crate) rng: Box<dyn RandomSource>,
     pub(crate) ids: Arc<IdGenerator>,
     pub(crate) fs: Arc<dyn Filesystem>,
+    use_retained_fs: bool,
     pub(crate) journal: Option<Journal>,
     pub(crate) transport: Option<Arc<dyn HttpTransport>>,
     pub(crate) session: Option<Arc<dyn SessionProvider>>,
@@ -79,6 +80,7 @@ impl EngineBuilder {
             rng: Box::new(SystemRandom),
             ids: Arc::new(IdGenerator::new()),
             fs: Arc::new(RealFs::new()),
+            use_retained_fs: true,
             journal: None,
             transport: None,
             session: None,
@@ -123,6 +125,7 @@ impl EngineBuilder {
     #[must_use]
     pub fn filesystem(mut self, fs: Arc<dyn Filesystem>) -> Self {
         self.fs = fs;
+        self.use_retained_fs = false;
         self
     }
 
@@ -191,14 +194,23 @@ impl EngineBuilder {
     }
 
     /// Validates the configuration, runs startup recovery (03 section 10) and starts the scheduler.
-    pub async fn build(self) -> EngineResult<Engine> {
+    pub async fn build(mut self) -> EngineResult<Engine> {
         self.config.validate()?;
         self.transfer_tuning.validate()?;
         let journal = self
             .journal
             .ok_or_else(|| rejected(codes::NM_SCHEMA_VIOLATION, "a journal is required"))?;
         let roots = WriteRoots::open(&self.config.write_roots)?;
-        roots.resolve_dest_dir(&self.config.default_dest_dir)?;
+        let default_dest = roots.resolve_dest_dir(&self.config.default_dest_dir)?;
+        if self.use_retained_fs {
+            self.fs = Arc::new(zeus_fs::RetainedFs::open(&roots)?);
+            self.config.write_roots = roots
+                .roots()
+                .iter()
+                .map(|r| r.path().to_path_buf())
+                .collect();
+            self.config.default_dest_dir = default_dest;
+        }
         let transport = match self.transport {
             Some(t) => t,
             None => Arc::new(zeus_http::ReqwestTransport::new(&self.config.http)?),
@@ -954,6 +966,9 @@ impl Engine {
                 },
                 &mut |r| {
                     if action == ControlAction::Retry {
+                        // A person's new attempt consumes a held failed-finalization intent.
+                        // Keeping it would attach the prior object to a later attempt's F0/F3 gap.
+                        r.internal.finalize = None;
                         r.job.error = None;
                         r.job.retry = RetryState::default();
                         r.internal.retry_no_progress_since = None;
@@ -1004,7 +1019,14 @@ impl Engine {
                     && m.file_id.is_some()
                     && m.file_id == result.internal.zpart_file_id
             }) {
-                self.inner.fs.remove_file(partial)?;
+                self.inner.fs.remove_expected(
+                    partial,
+                    result
+                        .internal
+                        .zpart_file_id
+                        .as_ref()
+                        .ok_or(zeus_fs::FsError::OutsideRoots)?,
+                )?;
             }
             self.inner.journal.transact(|t| {
                 t.remove_ranges(id, None)?;
@@ -2099,7 +2121,7 @@ impl Engine {
                 vec![],
                 |_| Ok(()),
             )?;
-            return self.finalize(id).await;
+            return self.finalize(id, None).await;
         }
         record = self.transition(
             id,
@@ -2412,7 +2434,7 @@ impl Engine {
         if cancel.is_cancelled() {
             return Err(HttpError::Canceled.into());
         }
-        self.finalize(id).await
+        self.finalize(id, Some(file)).await
     }
     async fn write_unit(
         &self,
@@ -2548,13 +2570,20 @@ impl Engine {
         })
         .await
     }
-    async fn finalize(&self, id: JobId) -> EngineResult<()> {
+    async fn finalize(&self, id: JobId, opened: Option<Arc<dyn DataFile>>) -> EngineResult<()> {
         let engine = self.clone();
         blocking(move || {
             let record = engine.record(id)?;
             let path = Path::new(&record.internal.zpart_path);
-            let (digests, head) =
-                zeus_verify::hash::verify_file(path, &Default::default(), &mut |_| true)?;
+            let file: Arc<dyn DataFile> = match opened {
+                Some(file) => file,
+                None => Arc::from(engine.inner.fs.open_existing(path)?),
+            };
+            let identity = file.file_id()?;
+            if record.internal.zpart_file_id.as_ref() != Some(&identity) {
+                return Err(zeus_fs::FsError::OutsideRoots.into());
+            }
+            let (digests, head) = verify_opened_data(file.as_ref())?;
             if record
                 .job
                 .spec
@@ -2647,14 +2676,9 @@ impl Engine {
                     Ok(())
                 },
             )?;
-            let file = engine.inner.fs.open_existing(path)?;
-            let identity = file.file_id()?;
-            if record.internal.zpart_file_id.as_ref() != Some(&identity) {
-                return Err(zeus_fs::FsError::AlreadyExists.into());
-            }
-            use zeus_fs::provenance::ProvenanceMarker;
-            let os_metadata = zeus_fs::provenance::NativeMarker.apply(
+            let os_metadata = engine.inner.fs.mark_opened(
                 path,
+                file.as_ref(),
                 &zeus_fs::provenance::ProvenanceMarks {
                     origin_url: Some(record.job.spec.url.redact(RedactMode::Strict)),
                     referrer_url: record
@@ -2674,12 +2698,9 @@ impl Engine {
                     .ok_or(zeus_journal::JournalError::Invariant("missing job"))?;
                 r.internal.os_metadata = os_metadata.clone();
                 if let Some(v) = &mut r.internal.verify_result {
-                    v.mtime_ms = engine
-                        .inner
-                        .fs
-                        .metadata(path)
+                    v.mtime_ms = file
+                        .metadata()
                         .ok()
-                        .flatten()
                         .and_then(|m| u64::try_from(m.mtime_ms).ok());
                 }
                 r.internal.finalize = Some(zeus_journal::FinalizeState {
@@ -2691,19 +2712,20 @@ impl Engine {
                 });
                 t.put_job(&r)
             })?;
-            drop(file);
             engine
                 .inner
                 .roots
                 .root_for(Path::new(&record.internal.dest_path))?
                 .check_existing(Path::new(&record.internal.dest_path))?;
-            engine
-                .inner
-                .fs
-                .rename_noreplace(path, Path::new(&record.internal.dest_path))?;
+            engine.inner.fs.publish_opened(
+                path,
+                Path::new(&record.internal.dest_path),
+                file.as_ref(),
+            )?;
             if let Some(dir) = Path::new(&record.internal.dest_path).parent() {
                 engine.inner.fs.sync_dir(dir)?;
             }
+            drop(file);
             let completed = JobCompletedData {
                 path: record.internal.dest_path.clone(),
                 size_bytes: digests.size_bytes,
@@ -3011,5 +3033,115 @@ impl Engine {
             },
         )?;
         Ok(())
+    }
+}
+
+// Hash the exact data object subsequently marked and published. A preallocated length is not
+// progress, and a substituted path can never change which object supplies verified bytes.
+fn verify_opened_data(file: &dyn DataFile) -> EngineResult<(zeus_verify::hash::Digests, Vec<u8>)> {
+    let modified = || {
+        file.native_file()
+            .map(|f| f.metadata().and_then(|m| m.modified()))
+            .transpose()
+            .map_err(zeus_fs::FsError::from)
+    };
+    let before = file.metadata()?;
+    let before_modified = modified()?;
+    let mut hasher = zeus_verify::hash::DualHasher::new();
+    let mut buffer = vec![0; 1 << 20];
+    let mut head = Vec::with_capacity(8192);
+    let mut offset = 0;
+    loop {
+        let n = file.read_at(offset, &mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        head.extend_from_slice(&buffer[..n.min(8192 - head.len())]);
+        hasher.update(&buffer[..n]);
+        offset = offset
+            .checked_add(n as u64)
+            .ok_or(zeus_fs::FsError::InvalidName("file offset overflow"))?;
+        if offset > before.len {
+            return Err(rejected(
+                codes::INTEGRITY_SIZE_MISMATCH,
+                "file changed during verification",
+            ));
+        }
+    }
+    let after = file.metadata()?;
+    if before != after || before_modified != modified()? || offset != before.len {
+        return Err(rejected(
+            codes::INTEGRITY_SIZE_MISMATCH,
+            "file changed during verification",
+        ));
+    }
+    Ok((hasher.finalize(), head))
+}
+
+#[cfg(test)]
+mod opened_verification_tests {
+    use super::*;
+    #[derive(Debug)]
+    struct TimestampChangingFile {
+        inner: Box<dyn DataFile>,
+        modified: std::time::SystemTime,
+    }
+    impl DataFile for TimestampChangingFile {
+        fn write_all_at(&self, at: u64, bytes: &[u8]) -> zeus_fs::FsResult<()> {
+            self.inner.write_all_at(at, bytes)
+        }
+        fn read_at(&self, at: u64, bytes: &mut [u8]) -> zeus_fs::FsResult<usize> {
+            let read = self.inner.read_at(at, bytes)?;
+            if at == 0 {
+                self.inner
+                    .native_file()
+                    .unwrap()
+                    .set_times(std::fs::FileTimes::new().set_modified(self.modified))?;
+            }
+            Ok(read)
+        }
+        fn sync_data(&self) -> zeus_fs::FsResult<()> {
+            self.inner.sync_data()
+        }
+        fn sync_all(&self) -> zeus_fs::FsResult<()> {
+            self.inner.sync_all()
+        }
+        fn set_len(&self, len: u64) -> zeus_fs::FsResult<()> {
+            self.inner.set_len(len)
+        }
+        fn len(&self) -> zeus_fs::FsResult<u64> {
+            self.inner.len()
+        }
+        fn preallocate(&self, len: u64) -> zeus_fs::FsResult<zeus_fs::PreallocOutcome> {
+            self.inner.preallocate(len)
+        }
+        fn file_id(&self) -> zeus_fs::FsResult<zeus_types::FileId> {
+            self.inner.file_id()
+        }
+        fn metadata(&self) -> zeus_fs::FsResult<zeus_fs::FileMeta> {
+            self.inner.metadata()
+        }
+        fn native_file(&self) -> Option<&std::fs::File> {
+            self.inner.native_file()
+        }
+    }
+    #[test]
+    fn opened_verification_preserves_submillisecond_change_detection() {
+        let temp = tempfile::tempdir().unwrap();
+        let fs = zeus_fs::RealFs;
+        let file = fs.create_new(&temp.path().join("data")).unwrap();
+        file.write_all_at(0, b"data").unwrap();
+        let base = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        file.native_file()
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(base))
+            .unwrap();
+        let before = file.metadata().unwrap();
+        let changing = TimestampChangingFile {
+            inner: file,
+            modified: base + Duration::from_nanos(100),
+        };
+        assert!(verify_opened_data(&changing).is_err());
+        assert_eq!(before.mtime_ms, changing.metadata().unwrap().mtime_ms);
     }
 }

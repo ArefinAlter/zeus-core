@@ -99,8 +99,8 @@ pub struct VerifyResult {
     pub detected_mime: Option<String>,
     /// When verification finished.
     pub verified_at: Timestamp,
-    /// Modification time of the data file when hashed; with size and file id it lets recovery skip a
-    /// re-hash (the fingerprint rule of 03 section 8.1).
+    /// Modification time of the data file when hashed. This is an advisory fingerprint; pending
+    /// finalization recovery rechecks opened bytes and never treats matching metadata as a digest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mtime_ms: Option<u64>,
 }
