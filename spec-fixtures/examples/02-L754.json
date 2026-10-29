@@ -1,15 +1,1 @@
-{
-  "v": 1,
-  "id": "e10",
-  "type": "fetch.error",
-  "body": {
-    "stream_id": "s1",
-    "error": {
-      "code": "fetch.network_error",
-      "class": "transient_network",
-      "message": "fetch() rejected: Failed to fetch",
-      "retryable": true
-    },
-    "bytes": 5242880
-  }
-}
+{ "v": 1, "id": "e9", "type": "fetch.end", "body": { "stream_id": "s1", "reason": "complete", "chunks": 64, "bytes": 16777216 } }

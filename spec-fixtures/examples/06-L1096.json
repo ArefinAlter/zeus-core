@@ -1,8 +1,7 @@
 {
-  "code": "policy.recently_denied",
-  "class": "policy_denied",
-  "message": "The user denied a session for this site a few minutes ago.",
-  "retryable": false,
-  "details": { "until": "2026-10-06T10:15:40.220Z" },
-  "next": { "action": "ask_user" }
+  "origin": "https://portal.example.org",
+  "scope": "once",
+  "reason": "This one export needs your login.",
+  "job_id": "job_01M48AKW7127CFKCDGD85Q0BNX",
+  "idempotency_key": "portal-once-8841"
 }

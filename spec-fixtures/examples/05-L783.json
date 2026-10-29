@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":23,"result":{"events":[],"cursor":{"store_id":"01K8M4VZ390000000000000001","instance_id":"abcd1234","seq":8},"head_seq":12,"has_more":true,"reset":null,"history_lost":false}}

@@ -1,1 +1,1 @@
-{ "v": 1, "id": "e9", "type": "fetch.end", "body": { "stream_id": "s1", "reason": "complete", "chunks": 64, "bytes": 16777216 } }
+{ "v": 1, "id": "d9", "type": "fetch.credit", "body": { "stream_id": "s1", "credits": 4 } }

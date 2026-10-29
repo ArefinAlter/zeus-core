@@ -1,0 +1,10 @@
+{
+  "account_id": "research",
+  "mode": "staged_upload",
+  "source": { "kind": "local_file", "path": "/home/user/Documents/report.pdf" },
+  "remote_name": "report.pdf",
+  "max_bytes": 10485760,
+  "max_seconds": 1800,
+  "allow_unbounded_remote": false,
+  "idempotency_key": "desktop-local-report-plan-1"
+}
