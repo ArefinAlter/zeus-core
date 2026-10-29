@@ -260,3 +260,33 @@ pub(crate) fn directory_free_space(parent: &cap_std::fs::Dir) -> FsResult<u64> {
         .saturating_mul(size.sectors as u64)
         .saturating_mul(size.bytes as u64))
 }
+
+/// Query allocation and link count without reopening a path. A failed optional query is unknown.
+pub(crate) fn storage_observation(file: &std::fs::File) -> (Option<u64>, Option<u64>) {
+    let mut compression = std::mem::MaybeUninit::<FILE_COMPRESSION_INFO>::uninit();
+    // SAFETY: retained live handle, correct structure/class/size; read only after API success.
+    let allocated = if unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileCompressionInfo,
+            compression.as_mut_ptr().cast(),
+            std::mem::size_of::<FILE_COMPRESSION_INFO>() as u32,
+        )
+    } != 0
+    {
+        // SAFETY: initialized by the successful call above.
+        u64::try_from(unsafe { compression.assume_init() }.CompressedFileSize).ok()
+    } else {
+        None
+    };
+    let mut info = std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+    // SAFETY: live handle and writable output buffer; inspect only on success.
+    let links =
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle(), info.as_mut_ptr()) } != 0 {
+            // SAFETY: initialized by the successful call above.
+            Some(u64::from(unsafe { info.assume_init() }.nNumberOfLinks))
+        } else {
+            None
+        };
+    (allocated, links)
+}
