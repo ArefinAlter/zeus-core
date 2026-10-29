@@ -3322,7 +3322,7 @@
             "$ref": "https://zeus.invalid/schema/common#/$defs/Url"
           },
           "minItems": 1,
-          "maxItems": 20
+          "maxItems": 3
         },
         "session_origin": {
           "$ref": "https://zeus.invalid/schema/common#/$defs/Origin"
@@ -3339,6 +3339,9 @@
         },
         "draft": {
           "$ref": "#/$defs/WorkflowDraftRequest"
+        },
+        "browser_document_mode": {
+          "const": "browser_origin"
         }
       }
     },
@@ -3384,6 +3387,9 @@
         },
         "draft": {
           "$ref": "#/$defs/WorkflowDraftInfo"
+        },
+        "browser_review": {
+          "$ref": "https://zeus.invalid/schema/common#/$defs/ApprovalId"
         }
       }
     },
@@ -5165,6 +5171,9 @@
         },
         {
           "$ref": "#/$defs/LlmAuthSignOutRequest"
+        },
+        {
+          "$ref": "#/$defs/EventsReadRequest"
         }
       ]
     },
@@ -6530,6 +6539,2571 @@
           }
         }
       ]
+    },
+    "CloudOauthBeginParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthBeginParams"
+    },
+    "CloudOauthBeginResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthBeginResult"
+    },
+    "CloudOauthBeginRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.oauth.begin"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudOauthBeginParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudOauthBeginResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudOauthBeginResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudOauthCancelParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthCancelParams"
+    },
+    "CloudOauthCancelResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthStatus"
+    },
+    "CloudOauthCancelRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.oauth.cancel"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudOauthCancelParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudOauthCancelResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudOauthCancelResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudOauthDisconnectParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthDisconnectParams"
+    },
+    "CloudOauthDisconnectResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthDisconnectResult"
+    },
+    "CloudOauthDisconnectRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.oauth.disconnect"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudOauthDisconnectParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudOauthDisconnectResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudOauthDisconnectResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudOauthFinishParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthFinishParams"
+    },
+    "CloudOauthFinishResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthStatus"
+    },
+    "CloudOauthFinishRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.oauth.finish"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudOauthFinishParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudOauthFinishResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudOauthFinishResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudOauthRefreshParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthRefreshParams"
+    },
+    "CloudOauthRefreshResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthStatus"
+    },
+    "CloudOauthRefreshRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.oauth.refresh"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudOauthRefreshParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudOauthRefreshResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudOauthRefreshResult"
+            }
+          }
+        }
+      ]
+    },
+    "CloudOauthStatusParams": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthStatusParams"
+    },
+    "CloudOauthStatusResult": {
+      "$ref": "https://zeus.invalid/schema/cloud.v1#/$defs/CloudOAuthStatus"
+    },
+    "CloudOauthStatusRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "cloud.oauth.status"
+            },
+            "params": {
+              "$ref": "#/$defs/CloudOauthStatusParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "CloudOauthStatusResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/CloudOauthStatusResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxEntriesAddParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxEntriesAddParams"
+    },
+    "InboxEntriesAddResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxEntriesAddResult"
+    },
+    "InboxEntriesAddRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.entries.add"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxEntriesAddParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxEntriesAddResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxEntriesAddResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxEntriesRemoveParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxEntriesRemoveParams"
+    },
+    "InboxEntriesRemoveResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxMutationResult"
+    },
+    "InboxEntriesRemoveRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.entries.remove"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxEntriesRemoveParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxEntriesRemoveResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxEntriesRemoveResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxPackagesArchiveParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxPackageArchiveParams"
+    },
+    "InboxPackagesArchiveResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxMutationResult"
+    },
+    "InboxPackagesArchiveRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.packages.archive"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxPackagesArchiveParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxPackagesArchiveResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxPackagesArchiveResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxPackagesGetParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxPackageGetParams"
+    },
+    "InboxPackagesGetResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxPackageGetResult"
+    },
+    "InboxPackagesGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.packages.get"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxPackagesGetParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxPackagesGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxPackagesGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxPackagesListParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxPackagesListParams"
+    },
+    "InboxPackagesListResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/Page"
+    },
+    "InboxPackagesListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.packages.list"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxPackagesListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxPackagesListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxPackagesListResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxPackagesPutParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxPackagePutParams"
+    },
+    "InboxPackagesPutResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxMutationResult"
+    },
+    "InboxPackagesPutRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.packages.put"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxPackagesPutParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxPackagesPutResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxPackagesPutResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxPreviewParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxPreviewParams"
+    },
+    "InboxPreviewResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxPreviewResult"
+    },
+    "InboxPreviewRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.preview"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxPreviewParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxPreviewResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxPreviewResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxSubmissionsGetParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxSubmissionGetParams"
+    },
+    "InboxSubmissionsGetResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxSubmissionView"
+    },
+    "InboxSubmissionsGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.submissions.get"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxSubmissionsGetParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxSubmissionsGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxSubmissionsGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxSubmissionsRetryParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxSubmissionRetryParams"
+    },
+    "InboxSubmissionsRetryResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxSubmitResult"
+    },
+    "InboxSubmissionsRetryRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.submissions.retry"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxSubmissionsRetryParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxSubmissionsRetryResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxSubmissionsRetryResult"
+            }
+          }
+        }
+      ]
+    },
+    "InboxSubmitParams": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxSubmitParams"
+    },
+    "InboxSubmitResult": {
+      "$ref": "https://zeus.invalid/schema/inbox.v1#/$defs/InboxSubmitResult"
+    },
+    "InboxSubmitRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "inbox.submit"
+            },
+            "params": {
+              "$ref": "#/$defs/InboxSubmitParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "InboxSubmitResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/InboxSubmitResult"
+            }
+          }
+        }
+      ]
+    },
+    "EventCursor": {
+      "type": "object",
+      "properties": {
+        "store_id": {
+          "type": "string",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+        },
+        "instance_id": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "seq": {
+          "$ref": "#/$defs/EventSeqOrZero"
+        }
+      },
+      "required": [
+        "store_id",
+        "instance_id",
+        "seq"
+      ],
+      "additionalProperties": false
+    },
+    "EventsReadParams": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EventCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "EventsReadResult": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "https://zeus.invalid/schema/domain#/$defs/Event"
+          }
+        },
+        "cursor": {
+          "$ref": "#/$defs/EventCursor"
+        },
+        "head_seq": {
+          "$ref": "#/$defs/EventSeqOrZero"
+        },
+        "has_more": {
+          "type": "boolean"
+        },
+        "history_lost": {
+          "type": "boolean"
+        },
+        "reset": {
+          "enum": [
+            null,
+            "store_changed",
+            "daemon_restarted",
+            "cursor_ahead"
+          ]
+        }
+      },
+      "required": [
+        "events",
+        "cursor",
+        "head_seq",
+        "has_more",
+        "history_lost",
+        "reset"
+      ],
+      "additionalProperties": false
+    },
+    "EventsReadRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "method"
+          ],
+          "properties": {
+            "method": {
+              "const": "events.read"
+            },
+            "params": {
+              "$ref": "#/$defs/EventsReadParams"
+            }
+          }
+        }
+      ]
+    },
+    "EventsReadResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/EventsReadResult"
+            }
+          }
+        }
+      ]
+    },
+    "SourcesAccountsConfigureParams": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesAccountConfigureParams"
+    },
+    "SourcesAccountsConfigureResult": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesAccountMutationResult"
+    },
+    "SourcesAccountsConfigureRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "sources.accounts.configure"
+            },
+            "params": {
+              "$ref": "#/$defs/SourcesAccountsConfigureParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "SourcesAccountsConfigureResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SourcesAccountsConfigureResult"
+            }
+          }
+        }
+      ]
+    },
+    "SourcesAccountsListParams": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesReadParams"
+    },
+    "SourcesAccountsListResult": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesAccountsResult"
+    },
+    "SourcesAccountsListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "sources.accounts.list"
+            },
+            "params": {
+              "$ref": "#/$defs/SourcesAccountsListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "SourcesAccountsListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SourcesAccountsListResult"
+            }
+          }
+        }
+      ]
+    },
+    "SourcesAccountsRevokeParams": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesAccountRevokeParams"
+    },
+    "SourcesAccountsRevokeResult": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesAccountMutationResult"
+    },
+    "SourcesAccountsRevokeRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "sources.accounts.revoke"
+            },
+            "params": {
+              "$ref": "#/$defs/SourcesAccountsRevokeParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "SourcesAccountsRevokeResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SourcesAccountsRevokeResult"
+            }
+          }
+        }
+      ]
+    },
+    "SourcesControlParams": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesControlParams"
+    },
+    "SourcesControlResult": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourceOperationView"
+    },
+    "SourcesControlRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "sources.control"
+            },
+            "params": {
+              "$ref": "#/$defs/SourcesControlParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "SourcesControlResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SourcesControlResult"
+            }
+          }
+        }
+      ]
+    },
+    "SourcesGetParams": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesGetParams"
+    },
+    "SourcesGetResult": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourceOperationView"
+    },
+    "SourcesGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "sources.get"
+            },
+            "params": {
+              "$ref": "#/$defs/SourcesGetParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "SourcesGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SourcesGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "SourcesInspectParams": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesInspectParams"
+    },
+    "SourcesInspectResult": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcePlanView"
+    },
+    "SourcesInspectRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "sources.inspect"
+            },
+            "params": {
+              "$ref": "#/$defs/SourcesInspectParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "SourcesInspectResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SourcesInspectResult"
+            }
+          }
+        }
+      ]
+    },
+    "SourcesListParams": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesReadParams"
+    },
+    "SourcesListResult": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesListResult"
+    },
+    "SourcesListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "sources.list"
+            },
+            "params": {
+              "$ref": "#/$defs/SourcesListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "SourcesListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SourcesListResult"
+            }
+          }
+        }
+      ]
+    },
+    "SourcesSubmitParams": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourcesSubmitParams"
+    },
+    "SourcesSubmitResult": {
+      "$ref": "https://zeus.invalid/schema/sources.v1#/$defs/SourceOperationView"
+    },
+    "SourcesSubmitRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "sources.submit"
+            },
+            "params": {
+              "$ref": "#/$defs/SourcesSubmitParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "SourcesSubmitResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/SourcesSubmitResult"
+            }
+          }
+        }
+      ]
+    },
+    "FilesOperationGetParams": {
+      "additionalProperties": false,
+      "description": "Read one durable organizer operation visible to the caller.",
+      "properties": {
+        "operation_id": {
+          "description": "Operation identifier returned by organize or undo.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "type": "object"
+    },
+    "FilesOperationGetResult": {
+      "description": "Current organization progress. Read-only; no file paths outside the caller's view.",
+      "properties": {
+        "approval_id": {
+          "description": "Human request associated with the exact operation.",
+          "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "completed": {
+          "description": "Completed effects, including partial success before a stop.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 4294967295
+        },
+        "operation_id": {
+          "description": "Durable operation identity.",
+          "type": "string"
+        },
+        "pending": {
+          "description": "Steps not yet started or reconciled.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 4294967295
+        },
+        "reason": {
+          "description": "Terminal stop/refusal reason, when present.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "skipped": {
+          "description": "Steps skipped because their preconditions changed.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 4294967295
+        },
+        "state": {
+          "description": "awaiting_approval, applying, applied, dropped or stopped.",
+          "type": "string"
+        },
+        "steps": {
+          "description": "Exact originally reviewed steps.",
+          "items": {
+            "description": "One step of a file plan.",
+            "properties": {
+              "destructive": {
+                "description": "Whether this step deletes or overwrites (needs approval to apply).",
+                "type": "boolean"
+              },
+              "from": {
+                "description": "Source path relative to the root.",
+                "type": "string"
+              },
+              "op": {
+                "description": "`move`, `rename`, `convert` or `trash`.",
+                "type": "string"
+              },
+              "to": {
+                "description": "Destination path relative to the root, for non-trash operations.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "from",
+              "destructive"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "undone_by": {
+          "description": "Existing inverse operation, if requested.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "state",
+        "steps",
+        "completed",
+        "skipped",
+        "pending",
+        "approval_id"
+      ],
+      "type": "object"
+    },
+    "FilesOperationGetRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "files.operation.get"
+            },
+            "params": {
+              "$ref": "#/$defs/FilesOperationGetParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "FilesOperationGetResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/FilesOperationGetResult"
+            }
+          }
+        }
+      ]
+    },
+    "QueuesConfigureRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "queues.configure"
+            },
+            "params": {
+              "$ref": "#/$defs/QueuesConfigureParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "QueuesConfigureResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/QueuesConfigureResult"
+            }
+          }
+        }
+      ]
+    },
+    "QueuesControlRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "queues.control"
+            },
+            "params": {
+              "$ref": "#/$defs/QueuesControlParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "QueuesControlResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/QueuesControlResult"
+            }
+          }
+        }
+      ]
+    },
+    "QueuesDeleteRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "queues.delete"
+            },
+            "params": {
+              "$ref": "#/$defs/QueuesDeleteParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "QueuesDeleteResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/QueuesDeleteResult"
+            }
+          }
+        }
+      ]
+    },
+    "QueuesListRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "queues.list"
+            },
+            "params": {
+              "$ref": "#/$defs/QueuesListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "QueuesListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/QueuesListResult"
+            }
+          }
+        }
+      ]
+    },
+    "QueuesPutRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "queues.put"
+            },
+            "params": {
+              "$ref": "#/$defs/QueuesPutParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "QueuesPutResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/QueuesPutResult"
+            }
+          }
+        }
+      ]
+    },
+    "QueuesPutResult": {
+      "description": "`queues.put` result.",
+      "properties": {
+        "queue": {
+          "$ref": "#/$defs/QueueView",
+          "description": "The queue as stored."
+        },
+        "replayed": {
+          "default": false,
+          "description": "True when this response replays a durable mutation receipt.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "queue"
+      ],
+      "type": "object"
+    },
+    "QueueView": {
+      "description": "A queue with its live state.",
+      "properties": {
+        "active": {
+          "description": "Members transferring or about to.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "builtin": {
+          "description": "True for the queue that cannot be deleted.",
+          "type": "boolean"
+        },
+        "finish_action_pending": {
+          "description": "`on_finish` has not been acknowledged yet (`queues.control` `ack_finish`).",
+          "type": "boolean"
+        },
+        "finished_at_ms": {
+          "description": "When the queue last ran out of work after running.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "held_job_ids": {
+          "description": "The members the daemon holds back (paused until the queue releases them).",
+          "items": {
+            "description": "Identifier with the prefix `job_` followed by a 26 character ULID.",
+            "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "`[a-z0-9_-]{1,32}`.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/QueueKind",
+          "default": "download",
+          "description": "What the queue does."
+        },
+        "last_started_ms": {
+          "description": "When it last started (milliseconds since the Unix epoch).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit_kib_s": {
+          "default": null,
+          "description": "KiB/s for the whole queue; `null` means no queue limit.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_concurrent": {
+          "default": 3,
+          "description": "Downloads released at once, 1 to 16.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "Display name, 1 to 80 characters.",
+          "type": "string"
+        },
+        "next_start_ms": {
+          "description": "The next scheduled start, if the schedule has one.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "next_stop_ms": {
+          "description": "The next scheduled stop of the current run, if there is one.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "on_finish": {
+          "$ref": "#/$defs/OnFinish",
+          "default": "nothing",
+          "description": "What happens when the queue has no work left."
+        },
+        "order": {
+          "description": "Member downloads that are not finished, in release order.",
+          "items": {
+            "description": "Identifier with the prefix `job_` followed by a 26 character ULID.",
+            "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "retries": {
+          "default": 0,
+          "description": "Extra automatic retries of a failed download when its error is retryable, 0 to 50.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retry_delay_s": {
+          "default": 30,
+          "description": "Seconds to wait before each of those retries, 1 to 3600.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "running": {
+          "description": "The queue is running: it releases downloads.",
+          "type": "boolean"
+        },
+        "schedule": {
+          "$ref": "#/$defs/QueueSchedule",
+          "default": {
+            "days": [],
+            "repeat": "days",
+            "start_date": "",
+            "start_enabled": false,
+            "start_time": "02:00",
+            "stop_enabled": false,
+            "stop_time": "06:00"
+          },
+          "description": "Start and stop times."
+        },
+        "sync_every_hours": {
+          "default": 24,
+          "description": "Hours between synchronization checks, 1 to 720.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sync_files": {
+          "default": [],
+          "description": "Completed files watched by this synchronization queue.",
+          "items": {
+            "$ref": "#/$defs/SyncFileView"
+          },
+          "type": "array"
+        },
+        "waiting": {
+          "description": "Members waiting for a turn (held by the daemon).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "builtin",
+        "running",
+        "waiting",
+        "active",
+        "order",
+        "held_job_ids",
+        "finish_action_pending"
+      ],
+      "type": "object"
+    },
+    "SyncFileView": {
+      "description": "A durable synchronization watch.",
+      "properties": {
+        "job_id": {
+          "description": "Latest completed version, whose destination is retained for the next version.",
+          "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "last_checked_ms": {
+          "description": "Last probe time in Unix milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "next_check_ms": {
+          "description": "Earliest next probe time in Unix milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pending_job_id": {
+          "description": "New version in progress, if any.",
+          "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/SyncStatus",
+          "description": "Last known outcome."
+        }
+      },
+      "required": [
+        "job_id",
+        "next_check_ms",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SyncStatus": {
+      "description": "Result of the last synchronization check; no URL or credential is exposed.",
+      "oneOf": [
+        {
+          "const": "waiting",
+          "description": "The first check has not run.",
+          "type": "string"
+        },
+        {
+          "const": "unchanged",
+          "description": "Strong representation validators matched.",
+          "type": "string"
+        },
+        {
+          "const": "downloading",
+          "description": "A new version is downloading beside the previous file.",
+          "type": "string"
+        },
+        {
+          "const": "updated",
+          "description": "A new version completed.",
+          "type": "string"
+        },
+        {
+          "const": "unverifiable",
+          "description": "Strong validators or a compatible unpinned request are unavailable.",
+          "type": "string"
+        },
+        {
+          "const": "needs_session",
+          "description": "The provider requires a current session grant.",
+          "type": "string"
+        },
+        {
+          "const": "policy_blocked",
+          "description": "Signed team restrictions or requester permissions currently prohibit a new transfer.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The check or new download failed; the old version remains intact.",
+          "type": "string"
+        }
+      ]
+    },
+    "QueueSchedule": {
+      "description": "When a queue starts and stops. Times are wall-clock `HH:MM` in the configured time zone; days are 0 (Sunday)\nto 6. A stop time earlier than the start time means the window runs past midnight.",
+      "properties": {
+        "days": {
+          "default": [],
+          "description": "Weekdays for `repeat: days`, 0 = Sunday.",
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "repeat": {
+          "$ref": "#/$defs/Repeat",
+          "default": "days",
+          "description": "`once` runs on `start_date`; `days` repeats on `days`."
+        },
+        "start_date": {
+          "default": "",
+          "description": "`YYYY-MM-DD`, used when `repeat` is `once`.",
+          "type": "string"
+        },
+        "start_enabled": {
+          "default": false,
+          "description": "Start at `start_time`.",
+          "type": "boolean"
+        },
+        "start_time": {
+          "default": "02:00",
+          "description": "`HH:MM`.",
+          "type": "string"
+        },
+        "stop_enabled": {
+          "default": false,
+          "description": "Stop at `stop_time`.",
+          "type": "boolean"
+        },
+        "stop_time": {
+          "default": "06:00",
+          "description": "`HH:MM`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Repeat": {
+      "description": "How a start time repeats.",
+      "oneOf": [
+        {
+          "const": "once",
+          "description": "Starts once, on `start_date`.",
+          "type": "string"
+        },
+        {
+          "const": "days",
+          "description": "Starts on each listed weekday.",
+          "type": "string"
+        }
+      ]
+    },
+    "OnFinish": {
+      "description": "What happens when a queue has no work left. The daemon performs `stop_limiter` itself; the application that\nstarted the daemon performs the others when it sees `finish_action_pending`.",
+      "oneOf": [
+        {
+          "const": "nothing",
+          "description": "Nothing.",
+          "type": "string"
+        },
+        {
+          "const": "notify",
+          "description": "Tell the person.",
+          "type": "string"
+        },
+        {
+          "const": "stop_limiter",
+          "description": "Turn the speed limiter off.",
+          "type": "string"
+        },
+        {
+          "const": "close_app",
+          "description": "Close the application.",
+          "type": "string"
+        },
+        {
+          "const": "sleep",
+          "description": "Put the computer to sleep.",
+          "type": "string"
+        }
+      ]
+    },
+    "QueueKind": {
+      "description": "What a queue does.",
+      "oneOf": [
+        {
+          "const": "download",
+          "description": "Downloads each file once.",
+          "type": "string"
+        },
+        {
+          "const": "sync",
+          "description": "Keeps checking completed downloads for a new strongly identified version.",
+          "type": "string"
+        }
+      ]
+    },
+    "QueuesPutParams": {
+      "description": "`queues.put` parameters: create a queue or replace its settings.",
+      "properties": {
+        "idempotency_key": {
+          "description": "Client-chosen key making the call safe to repeat (00 section 5.4).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "queue": {
+          "$ref": "#/$defs/QueueDef",
+          "description": "The queue. The built-in queue can be changed but not renamed to another id."
+        }
+      },
+      "required": [
+        "queue"
+      ],
+      "type": "object"
+    },
+    "QueueDef": {
+      "description": "A queue's settings, as stored and as sent to `queues.put`.",
+      "properties": {
+        "id": {
+          "description": "`[a-z0-9_-]{1,32}`.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/QueueKind",
+          "default": "download",
+          "description": "What the queue does."
+        },
+        "limit_kib_s": {
+          "default": null,
+          "description": "KiB/s for the whole queue; `null` means no queue limit.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_concurrent": {
+          "default": 3,
+          "description": "Downloads released at once, 1 to 16.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "Display name, 1 to 80 characters.",
+          "type": "string"
+        },
+        "on_finish": {
+          "$ref": "#/$defs/OnFinish",
+          "default": "nothing",
+          "description": "What happens when the queue has no work left."
+        },
+        "retries": {
+          "default": 0,
+          "description": "Extra automatic retries of a failed download when its error is retryable, 0 to 50.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retry_delay_s": {
+          "default": 30,
+          "description": "Seconds to wait before each of those retries, 1 to 3600.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schedule": {
+          "$ref": "#/$defs/QueueSchedule",
+          "default": {
+            "days": [],
+            "repeat": "days",
+            "start_date": "",
+            "start_enabled": false,
+            "start_time": "02:00",
+            "stop_enabled": false,
+            "stop_time": "06:00"
+          },
+          "description": "Start and stop times."
+        },
+        "sync_every_hours": {
+          "default": 24,
+          "description": "Hours between synchronization checks, 1 to 720.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "QueuesListResult": {
+      "description": "`queues.list` result.",
+      "properties": {
+        "defaults": {
+          "$ref": "#/$defs/QueueDefaults",
+          "description": "Defaults for all queues."
+        },
+        "kill_switch_engaged": {
+          "description": "The kill switch is engaged: no queue releases anything until a person releases it.",
+          "type": "boolean"
+        },
+        "limiter": {
+          "$ref": "#/$defs/LimiterView",
+          "description": "The global speed limiter."
+        },
+        "network": {
+          "$ref": "#/$defs/NetworkView",
+          "default": {
+            "cost": "unknown",
+            "held_jobs": 0,
+            "paused": false
+          },
+          "description": "Actual cost observation and policy hold state."
+        },
+        "now_ms": {
+          "description": "The daemon's clock (milliseconds since the Unix epoch).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queues": {
+          "description": "Every queue, the built-in one first.",
+          "items": {
+            "$ref": "#/$defs/QueueView"
+          },
+          "type": "array"
+        },
+        "utc_offset_min": {
+          "description": "Offset of the schedule clock from UTC in minutes right now (0 for UTC).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "queues",
+        "limiter",
+        "defaults",
+        "now_ms",
+        "utc_offset_min",
+        "kill_switch_engaged"
+      ],
+      "type": "object"
+    },
+    "NetworkView": {
+      "description": "Current policy observation.",
+      "properties": {
+        "cost": {
+          "$ref": "#/$defs/NetworkCost",
+          "description": "Observed or explicitly selected cost."
+        },
+        "held_jobs": {
+          "description": "Number of jobs held by this policy, excluding manual pauses.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "paused": {
+          "description": "The policy is holding downloads and synchronization probes.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cost",
+        "paused",
+        "held_jobs"
+      ],
+      "type": "object"
+    },
+    "NetworkCost": {
+      "description": "The current operating-system or explicit network-cost hint.",
+      "oneOf": [
+        {
+          "const": "unknown",
+          "description": "No trustworthy cost hint is available; this does not assert an unmetered connection.",
+          "type": "string"
+        },
+        {
+          "const": "unmetered",
+          "description": "Transfer volume is not reported as restricted.",
+          "type": "string"
+        },
+        {
+          "const": "metered",
+          "description": "Metered, roaming or over the data limit.",
+          "type": "string"
+        }
+      ]
+    },
+    "LimiterView": {
+      "description": "The limiter with what it does right now.",
+      "properties": {
+        "active_now": {
+          "description": "The limit applies at this moment (enabled, and inside the window when there is one).",
+          "type": "boolean"
+        },
+        "days": {
+          "default": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "description": "Weekdays of the window, 0 = Sunday.",
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "description": "The limiter applies.",
+          "type": "boolean"
+        },
+        "from": {
+          "default": "08:00",
+          "description": "Window start, `HH:MM`.",
+          "type": "string"
+        },
+        "limit_kib_s": {
+          "default": 1024,
+          "description": "KiB/s for everything Zeus downloads, 1 to 10 000 000.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schedule_enabled": {
+          "default": false,
+          "description": "Apply only inside the window below.",
+          "type": "boolean"
+        },
+        "to": {
+          "default": "18:00",
+          "description": "Window end, `HH:MM`; earlier than `from` means past midnight.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "active_now"
+      ],
+      "type": "object"
+    },
+    "QueueDefaults": {
+      "description": "Defaults that apply to every queue.",
+      "properties": {
+        "default_queue": {
+          "default": "main",
+          "description": "The queue a download joins when its sender names none and queueing is wanted.",
+          "type": "string"
+        },
+        "missed_window": {
+          "$ref": "#/$defs/MissedWindow",
+          "default": "skip",
+          "description": "What to do about a start missed while the daemon was off."
+        },
+        "network_mode": {
+          "$ref": "#/$defs/NetworkMode",
+          "default": "auto",
+          "description": "How to determine network cost."
+        },
+        "pause_on_metered": {
+          "default": true,
+          "description": "Hold active downloads while the cost is metered.",
+          "type": "boolean"
+        },
+        "stop_behaviour": {
+          "$ref": "#/$defs/StopBehaviour",
+          "default": "pause",
+          "description": "What a scheduled stop does to running downloads."
+        },
+        "timezone": {
+          "$ref": "#/$defs/Timezone",
+          "default": "local",
+          "description": "Clock for schedules and the limiter window."
+        }
+      },
+      "type": "object"
+    },
+    "Timezone": {
+      "description": "Which clock queue schedules and the limiter window follow.",
+      "oneOf": [
+        {
+          "const": "local",
+          "description": "The computer's local time.",
+          "type": "string"
+        },
+        {
+          "const": "utc",
+          "description": "Coordinated universal time.",
+          "type": "string"
+        }
+      ]
+    },
+    "StopBehaviour": {
+      "description": "What a scheduled stop does to downloads that are running.",
+      "oneOf": [
+        {
+          "const": "pause",
+          "description": "Pause them (saved bytes stay).",
+          "type": "string"
+        },
+        {
+          "const": "finish_current",
+          "description": "Let the ones already running finish and release no more.",
+          "type": "string"
+        }
+      ]
+    },
+    "NetworkMode": {
+      "description": "Source of network-cost information.",
+      "oneOf": [
+        {
+          "const": "auto",
+          "description": "Use the operating system's cost hint.",
+          "type": "string"
+        },
+        {
+          "const": "unmetered",
+          "description": "Treat this connection as unmetered.",
+          "type": "string"
+        },
+        {
+          "const": "metered",
+          "description": "Treat this connection as metered.",
+          "type": "string"
+        }
+      ]
+    },
+    "MissedWindow": {
+      "description": "A start that was missed because the daemon was not running.",
+      "oneOf": [
+        {
+          "const": "skip",
+          "description": "Wait for the next start.",
+          "type": "string"
+        },
+        {
+          "const": "run_once",
+          "description": "Start once as soon as the daemon runs again.",
+          "type": "string"
+        }
+      ]
+    },
+    "QueuesListParams": {
+      "description": "`queues.list` parameters.",
+      "type": "object"
+    },
+    "QueuesDeleteResult": {
+      "description": "`queues.delete` result.",
+      "properties": {
+        "released_job_ids": {
+          "description": "Members that left the queue. Held ones stay paused; resume them with `jobs.control`.",
+          "items": {
+            "description": "Identifier with the prefix `job_` followed by a 26 character ULID.",
+            "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "replayed": {
+          "default": false,
+          "description": "True when this response replays a durable mutation receipt.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "released_job_ids"
+      ],
+      "type": "object"
+    },
+    "QueuesDeleteParams": {
+      "description": "`queues.delete` parameters.",
+      "properties": {
+        "id": {
+          "description": "The queue; the built-in queue cannot be deleted.",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "description": "Client-chosen key making the call safe to repeat.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "QueuesControlResult": {
+      "description": "`queues.control` result.",
+      "properties": {
+        "affected_job_ids": {
+          "description": "Jobs the action changed.",
+          "items": {
+            "description": "Identifier with the prefix `job_` followed by a 26 character ULID.",
+            "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "queue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QueueView"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The queue the action concerned, when it concerned one."
+        },
+        "replayed": {
+          "default": false,
+          "description": "True when this response replays a durable mutation receipt.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "QueuesControlParams": {
+      "description": "`queues.control` parameters.",
+      "oneOf": [
+        {
+          "description": "Run the queue now (a person pressing Start).",
+          "properties": {
+            "action": {
+              "const": "start",
+              "type": "string"
+            },
+            "id": {
+              "description": "The queue.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Stop the queue now: running members pause, or finish first per `stop_behaviour`.",
+          "properties": {
+            "action": {
+              "const": "stop",
+              "type": "string"
+            },
+            "id": {
+              "description": "The queue.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Add jobs to the end of a queue (moving them if they belong to another one).",
+          "properties": {
+            "action": {
+              "const": "assign",
+              "type": "string"
+            },
+            "id": {
+              "description": "The queue.",
+              "type": "string"
+            },
+            "job_ids": {
+              "description": "1 to 100 jobs.",
+              "items": {
+                "description": "Identifier with the prefix `job_` followed by a 26 character ULID.",
+                "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "action",
+            "id",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Remove jobs from whatever queue holds them. Held jobs stay paused.",
+          "properties": {
+            "action": {
+              "const": "unassign",
+              "type": "string"
+            },
+            "job_ids": {
+              "description": "1 to 100 jobs.",
+              "items": {
+                "description": "Identifier with the prefix `job_` followed by a 26 character ULID.",
+                "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "action",
+            "job_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Move one job within its queue by `offset` places (negative is earlier).",
+          "properties": {
+            "action": {
+              "const": "move",
+              "type": "string"
+            },
+            "job_id": {
+              "description": "The job.",
+              "pattern": "^job_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+              "type": "string"
+            },
+            "offset": {
+              "description": "Places to move.",
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "job_id",
+            "offset"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Acknowledge that the application performed `on_finish`.",
+          "properties": {
+            "action": {
+              "const": "ack_finish",
+              "type": "string"
+            },
+            "id": {
+              "description": "The queue.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "idempotency_key": {
+          "description": "Client-chosen key making the call safe to repeat.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "QueuesConfigureResult": {
+      "description": "`queues.configure` result.",
+      "properties": {
+        "defaults": {
+          "$ref": "#/$defs/QueueDefaults",
+          "description": "The defaults as stored."
+        },
+        "limiter": {
+          "$ref": "#/$defs/LimiterView",
+          "description": "The limiter as stored."
+        },
+        "replayed": {
+          "default": false,
+          "description": "True when this response replays a durable mutation receipt.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "limiter",
+        "defaults"
+      ],
+      "type": "object"
+    },
+    "QueuesConfigureParams": {
+      "description": "`queues.configure` parameters: the speed limiter and the defaults. Absent parts stay as they are.",
+      "properties": {
+        "defaults": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QueueDefaults"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Defaults for all queues."
+        },
+        "idempotency_key": {
+          "description": "Client-chosen key making the call safe to repeat.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limiter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LimiterDef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The global speed limiter."
+        }
+      },
+      "type": "object"
+    },
+    "LimiterDef": {
+      "description": "The global speed limiter.",
+      "properties": {
+        "days": {
+          "default": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "description": "Weekdays of the window, 0 = Sunday.",
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "description": "The limiter applies.",
+          "type": "boolean"
+        },
+        "from": {
+          "default": "08:00",
+          "description": "Window start, `HH:MM`.",
+          "type": "string"
+        },
+        "limit_kib_s": {
+          "default": 1024,
+          "description": "KiB/s for everything Zeus downloads, 1 to 10 000 000.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schedule_enabled": {
+          "default": false,
+          "description": "Apply only inside the window below.",
+          "type": "boolean"
+        },
+        "to": {
+          "default": "18:00",
+          "description": "Window end, `HH:MM`; earlier than `from` means past midnight.",
+          "type": "string"
+        }
+      },
+      "type": "object"
     }
   }
 }

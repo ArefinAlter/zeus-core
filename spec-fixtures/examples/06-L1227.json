@@ -1,1 +1,1 @@
-{"idempotency_key":"sort-preview-1","request":{"action":"organize","dir":"/user/downloads","rules":{"rules":[{"when":{"ext":["pdf"]},"subdir":"papers"}]}}}
+{"idempotency_key":"sample-reports-1","request":{"action":"plan","goal":"Collect public reports","start_urls":["https://example.org/reports"]}}

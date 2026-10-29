@@ -1,0 +1,1 @@
+{"idempotency_key":"sort-preview-1","request":{"action":"organize","dir":"/user/downloads","rules":{"rules":[{"when":{"ext":["pdf"]},"subdir":"papers"}]}}}

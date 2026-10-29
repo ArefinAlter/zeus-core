@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":600,"method":"inbox.packages.put","params":{"untrusted_name":"Research package","default_dest_dir":null,"idempotency_key":"research-package-1"}}

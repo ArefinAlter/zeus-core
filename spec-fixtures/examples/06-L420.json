@@ -73,8 +73,20 @@
   },
   "zeus_artifacts": {
     "readOnlyHint": false,
-    "destructiveHint": false,
+    "destructiveHint": true,
     "idempotentHint": true,
     "openWorldHint": false
+  },
+  "zeus_sources": {
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": true,
+    "openWorldHint": true
+  },
+  "zeus_inbox": {
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": true,
+    "openWorldHint": true
   }
 }

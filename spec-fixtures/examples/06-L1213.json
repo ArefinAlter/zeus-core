@@ -1,1 +1,0 @@
-{"idempotency_key":"sample-reports-1","request":{"action":"plan","goal":"Collect public reports","start_urls":["https://example.org/reports"]}}

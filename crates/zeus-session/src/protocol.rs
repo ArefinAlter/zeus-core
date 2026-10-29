@@ -15,7 +15,7 @@ use serde_json::{Map, Value};
 use zeus_types::event::LeasePurpose;
 use zeus_types::{
     Approval, ApprovalId, ApprovalState, BrowserName, ConnectionId, ErrorEnvelope, Event, GrantId,
-    GrantScope, HttpUrl, JobId, JobState, JobSummary, Origin, SessionGrant, SessionLeaseId,
+    GrantScope, HttpUrl, JobId, JobState, JobSummary, Origin, RunId, SessionGrant, SessionLeaseId,
     Timestamp, Validators,
 };
 
@@ -34,6 +34,8 @@ pub mod capability {
     pub const HANDOFF: &str = "handoff";
     /// The extension can release session material.
     pub const SESSION: &str = "session";
+    /// Bounded authenticated workflow documents fetched in the approved browser profile.
+    pub const SESSION_PAGE: &str = "session.page";
     /// The extension can derive a fresh URL by refetching the origin URL.
     pub const URL_REFRESH_REFETCH: &str = "url_refresh.refetch";
     /// The extension can derive a fresh URL by starting and cancelling a browser download.
@@ -687,6 +689,219 @@ impl fmt::Debug for SessionResponseBody {
     }
 }
 
+/// The document representation requested by a workflow; never arbitrary request headers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageRepresentation {
+    /// HTML document, including XHTML.
+    Html,
+    /// JSON document or API page.
+    Json,
+    /// XML document, such as a sitemap.
+    Xml,
+    /// Plain text.
+    Text,
+}
+
+impl PageRepresentation {
+    /// The fixed Accept header associated with this representation.
+    #[must_use]
+    pub const fn accept(self) -> &'static str {
+        match self {
+            Self::Html => "text/html, application/xhtml+xml",
+            Self::Json => "application/json",
+            Self::Xml => "application/xml, text/xml",
+            Self::Text => "text/plain",
+        }
+    }
+}
+
+/// Maximum decoded bytes returned in one authenticated workflow document.
+pub const MAX_PAGE_BODY_BYTES: usize = 524_288;
+
+/// The durable subject of a browser page read. Plan sampling and execution never share authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "purpose", rename_all = "snake_case")]
+pub enum SessionPageSubject {
+    /// Bounded sampling under an explicit site grant, owned by the authenticated requester.
+    Plan {
+        /// The application's durable `plan_` ULID; the core does not depend on its plan IR.
+        plan_id: String,
+    },
+    /// Execution under the human approval and workflow grant for this exact run.
+    Run {
+        /// The run the grant covers.
+        run_id: RunId,
+    },
+}
+
+impl SessionPageSubject {
+    /// Validate the subject identifier without interpreting application state or granting access.
+    #[must_use]
+    pub fn valid(&self) -> bool {
+        match self {
+            Self::Run { .. } => true,
+            Self::Plan { plan_id } => plan_id.strip_prefix("plan_").is_some_and(|id| {
+                id.len() == 26
+                    && id.starts_with(|c: char| ('0'..='7').contains(&c))
+                    && id
+                        .bytes()
+                        .all(|b| b"0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(&b))
+            }),
+        }
+    }
+}
+
+/// `session.page.request`: read a document in the browser without exporting session material.
+/// Both sides require the negotiated `session.page` capability and an exact live grant.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionPageRequestBody {
+    /// Exact owned plan or approved run; a job id is never substituted for either.
+    pub subject: SessionPageSubject,
+    /// Human-created site grant for sampling, or workflow grant for the exact run and origin.
+    pub grant_id: GrantId,
+    /// The profile that recorded the extension's human consent.
+    pub profile_id: String,
+    /// Must equal the URL origin and the grant origin.
+    pub origin: Origin,
+    /// Same-origin document URL. Redirects are refused by this capability.
+    pub url: HttpUrl,
+    /// Fixed representation; no caller-supplied authorization or other headers.
+    pub representation: PageRepresentation,
+    /// Decoded body ceiling, at most `MAX_PAGE_BODY_BYTES`.
+    pub max_body_bytes: u32,
+    /// Entire request deadline, from 1000 through 25000 milliseconds.
+    pub deadline_ms: u32,
+    /// Private browsing requires an explicitly supported private context; never falls back.
+    #[serde(default)]
+    pub incognito: bool,
+}
+
+impl fmt::Debug for SessionPageRequestBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("SessionPageRequest([PRIVATE])")
+    }
+}
+
+/// Cancel only the page request correlated to this daemon message on this connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionPageCancelBody {
+    /// Original `session.page.request` message ID; never a new authority or another connection.
+    pub request_id: MessageId,
+}
+
+impl SessionPageRequestBody {
+    /// Check public structural bounds before any browser or network operation.
+    #[must_use]
+    pub fn valid_bounds(&self) -> bool {
+        self.url.origin() == self.origin
+            && self.url.url().fragment().is_none()
+            && self.subject.valid()
+            && self.profile_id.len() == 32
+            && self
+                .profile_id
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            && (1..=MAX_PAGE_BODY_BYTES as u32).contains(&self.max_body_bytes)
+            && (1_000..=25_000).contains(&self.deadline_ms)
+    }
+}
+
+/// A bounded authenticated document. Debug omits its body, headers and private URL.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionPageDocument {
+    /// Echoed plan/run identity.
+    pub subject: SessionPageSubject,
+    /// Echoed grant identity.
+    pub grant_id: GrantId,
+    /// Profile that actually fetched the document.
+    pub profile_id: String,
+    /// Actual final URL, checked against the exact request before publication.
+    pub final_url: HttpUrl,
+    /// HTTP response status; redirects are not followed.
+    pub http_status: u16,
+    /// Bounded declared content type.
+    pub content_type: String,
+    /// Optional pagination Link header; all other response headers stay in the browser.
+    pub link: Option<String>,
+    /// Decoded body bytes; memory is cleared on drop and Debug never exposes their content.
+    pub data: ChunkData,
+    /// Browser observation time, used only to reject stale responses.
+    pub issued_at: Timestamp,
+}
+
+impl SessionPageDocument {
+    /// Bind a response to its exact request after the daemon rechecks current grant authority.
+    #[must_use]
+    pub fn matches_request(&self, request: &SessionPageRequestBody, now: Timestamp) -> bool {
+        request.valid_bounds()
+            && self.subject == request.subject
+            && self.grant_id == request.grant_id
+            && self.profile_id == request.profile_id
+            && self.final_url == request.url
+            && (100..=599).contains(&self.http_status)
+            && !(300..=399).contains(&self.http_status)
+            && self.content_type.len() <= 256
+            && page_content_type(&self.content_type)
+            && !self.content_type.chars().any(char::is_control)
+            && self
+                .link
+                .as_ref()
+                .is_none_or(|v| v.len() <= 4096 && !v.chars().any(char::is_control))
+            && self.data.len() <= request.max_body_bytes as usize
+            && self.issued_at <= now.saturating_add_ms(5_000)
+            && now
+                .unix_millis()
+                .saturating_sub(self.issued_at.unix_millis())
+                <= i64::from(request.deadline_ms)
+    }
+}
+
+fn page_content_type(value: &str) -> bool {
+    let mime = value
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        mime.as_str(),
+        "text/html"
+            | "application/xhtml+xml"
+            | "text/plain"
+            | "application/json"
+            | "application/xml"
+            | "text/xml"
+    ) || mime.strip_prefix("application/").is_some_and(|subtype| {
+        (subtype.ends_with("+json") || subtype.ends_with("+xml"))
+            && subtype
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"!#$&^_.+-".contains(&b))
+    })
+}
+
+impl fmt::Debug for SessionPageDocument {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("SessionPageDocument([PRIVATE])")
+    }
+}
+
+/// `session.page.response`: bounded document data or a stable refusal; never cookies or tokens.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum SessionPageResponseBody {
+    /// Document fetched after browser and daemon consent checks.
+    Fetched {
+        /// Exact response binding and private payload.
+        document: Box<SessionPageDocument>,
+    },
+    /// Request refused or unavailable; error text never contains page data or private URLs.
+    Unavailable {
+        /// Stable existing session/fetch error code.
+        error: ErrorEnvelope,
+    },
+}
+
 /// How the extension may derive a fresh URL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1335,6 +1550,7 @@ body_enum! {
         HandoffOffer(HandoffOfferBody) = "handoff.offer", request: true;
         HandoffWithdraw(HandoffWithdrawBody) = "handoff.withdraw", request: false;
         SessionResponse(SessionResponseBody) = "session.response", request: false;
+        SessionPageResponse(SessionPageResponseBody) = "session.page.response", request: false;
         UrlRefreshResponse(UrlRefreshResponseBody) = "url.refresh.response", request: false;
         FetchHead(FetchHeadBody) = "fetch.head", request: false;
         FetchChunk(FetchChunkBody) = "fetch.chunk", request: false;
@@ -1363,6 +1579,8 @@ body_enum! {
         HandoffAccept(HandoffAcceptBody) = "handoff.accept", request: false;
         HandoffReject(HandoffRejectBody) = "handoff.reject", request: false;
         SessionRequest(SessionRequestBody) = "session.request", request: true;
+        SessionPageRequest(SessionPageRequestBody) = "session.page.request", request: true;
+        SessionPageCancel(SessionPageCancelBody) = "session.page.cancel", request: false;
         UrlRefreshRequest(UrlRefreshRequestBody) = "url.refresh.request", request: true;
         FetchRange(FetchRangeBody) = "fetch.range", request: true;
         FetchCredit(FetchCreditBody) = "fetch.credit", request: false;
@@ -1619,8 +1837,59 @@ mod tests {
 
     #[test]
     fn catalogue_sizes_match_the_schema_unions() {
-        assert_eq!(ExtensionBody::TYPES.len(), 22);
-        assert_eq!(DaemonBody::TYPES.len(), 22);
+        assert_eq!(ExtensionBody::TYPES.len(), 23);
+        assert_eq!(DaemonBody::TYPES.len(), 24);
+    }
+
+    #[test]
+    fn page_documents_bind_the_subject_profile_deadline_and_private_body() {
+        let ids = zeus_types::IdGenerator::new();
+        let now = Timestamp::now();
+        let request = SessionPageRequestBody {
+            subject: SessionPageSubject::Run {
+                run_id: ids.run_id(),
+            },
+            grant_id: ids.grant_id(),
+            profile_id: "a".repeat(32),
+            origin: Origin::parse("https://portal.example").unwrap(),
+            url: HttpUrl::parse("https://portal.example/page?private=ZEUS-CANARY-query").unwrap(),
+            representation: PageRepresentation::Html,
+            max_body_bytes: 128,
+            deadline_ms: 5_000,
+            incognito: false,
+        };
+        let document = SessionPageDocument {
+            subject: request.subject.clone(),
+            grant_id: request.grant_id,
+            profile_id: request.profile_id.clone(),
+            final_url: request.url.clone(),
+            http_status: 200,
+            content_type: "text/html".into(),
+            link: None,
+            data: ChunkData::new(b"ZEUS-CANARY-page".to_vec()),
+            issued_at: now,
+        };
+        assert!(request.valid_bounds());
+        assert!(document.matches_request(&request, now));
+        assert!(!format!("{document:?}").contains("ZEUS-CANARY"));
+        let mut other = document.clone();
+        other.subject = SessionPageSubject::Run {
+            run_id: ids.run_id(),
+        };
+        assert!(!other.matches_request(&request, now));
+        other = document.clone();
+        other.profile_id = "b".repeat(32);
+        assert!(!other.matches_request(&request, now));
+        other = document.clone();
+        other.final_url = HttpUrl::parse("https://portal.example/other").unwrap();
+        assert!(!other.matches_request(&request, now));
+        other = document.clone();
+        other.data = ChunkData::new(vec![0; 129]);
+        assert!(!other.matches_request(&request, now));
+        assert!(!document.matches_request(&request, now.saturating_add_ms(5_001)));
+        for id in ["plan_invalid", "plan_Z1M45NHJ2AHWMXT8JVJ7BEEJ01"] {
+            assert!(!SessionPageSubject::Plan { plan_id: id.into() }.valid());
+        }
     }
 
     #[test]

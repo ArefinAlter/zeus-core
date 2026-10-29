@@ -461,7 +461,9 @@
       "required": ["origin"],
       "properties": {
         "origin": { "$ref": "https://zeus.invalid/schema/common#/$defs/Origin" },
-        "scope": { "const": "workflow", "default": "workflow" }
+        "scope": { "const": "workflow", "default": "workflow" },
+        "document_mode": { "const": "browser_origin", "description": "Explicit browser-managed networking; no native peer pinning or redirect following." },
+        "profile_id": { "type": "string", "pattern": "^[0-9a-f]{32}$", "description": "Daemon-selected browser profile bound by the exact browser-mode and workflow reviews." }
       }
     },
     "RuleMatch": {
@@ -785,6 +787,7 @@
       "type": "object",
       "required": ["run_id", "plan_id", "plan_hash", "status", "pause_reason", "stop_reason", "possibly_incomplete", "approval_id", "grant_id", "created_at", "started_at", "finished_at", "updated_at", "elapsed_ms", "counts", "last_error", "drift"],
       "properties": {
+        "browser_document_mode": { "const": "browser_origin" },
         "report_version": { "type": "integer", "enum": [0, 1], "description": "Version 1 records complete counters from creation; 0 marks a legacy checkpoint." },
         "run_id": { "$ref": "https://zeus.invalid/schema/common#/$defs/RunId" },
         "plan_id": { "$ref": "#/$defs/PlanId" },
