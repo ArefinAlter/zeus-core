@@ -89,24 +89,33 @@ impl Engine {
         let unit = self.inner.config.commit.commit_unit_bytes;
         let ceiling = if run.browser_proxy { 8 << 20 } else { 32 << 20 };
         let mut preferred = tuning.segment_bytes.min(ceiling);
-        // Weakly identified servers retain the one-commit-unit request contract.
+        // Weakly identified servers retain a safe minimum chunk size.
         if !strong {
-            preferred = unit.min(ceiling);
+            preferred = (tuning.segment_bytes / 2).max(unit * 4).min(ceiling);
         }
+        let initial_target = if tuning.adaptive_concurrency {
+            self.inner
+                .concurrency_targets
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&run.request.url.origin().to_string())
+                .copied()
+                .unwrap_or_else(|| {
+                    if total >= 8 << 20 {
+                        limit.min(8).max(4)
+                    } else if total >= 2 << 20 {
+                        limit.min(4).max(2)
+                    } else {
+                        2
+                    }
+                })
+                .min(limit)
+                .max(1)
+        } else {
+            limit
+        };
         let mut controller = AimdController::new(AimdConfig {
-            initial: if tuning.adaptive_concurrency {
-                self.inner
-                    .concurrency_targets
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .get(&run.request.url.origin().to_string())
-                    .copied()
-                    .unwrap_or(2)
-                    .min(limit)
-                    .max(1)
-            } else {
-                limit
-            },
+            initial: initial_target,
             max: limit,
             ..AimdConfig::default()
         })
@@ -222,7 +231,7 @@ impl Engine {
                 _ = tick.tick(), if failure.is_none() => {
                     host_budget.recover();
                     let elapsed = measured_at.elapsed();
-                    if tuning.adaptive_concurrency && elapsed >= Duration::from_secs(2) {
+                    if tuning.adaptive_concurrency && elapsed >= Duration::from_secs(1) {
                         let bytes = network_bytes.load(Ordering::Relaxed);
                         let bps = ((bytes - measured_bytes) as f64 / elapsed.as_secs_f64()) as u64;
                         // Establish a zero baseline so the first useful interval probes one more

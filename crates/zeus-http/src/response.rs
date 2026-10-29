@@ -113,8 +113,9 @@ fn headers(
     }
     Ok(result)
 }
+/// Sends an HTTP request following up to 10 redirects and attaching session headers.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn send_following(
+pub async fn send_following(
     transport: &Arc<dyn HttpTransport>,
     mut url: HttpUrl,
     extra: &BTreeMap<String, String>,

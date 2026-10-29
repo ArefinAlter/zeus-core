@@ -37,4 +37,5 @@ pub use transport::{
     HttpRequest, HttpResponse, HttpTransport, ResponseBody, TransportError, TransportFailure,
 };
 
+pub use response::send_following;
 mod response;
