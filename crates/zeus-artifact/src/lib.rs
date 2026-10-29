@@ -2,6 +2,8 @@
 #![forbid(unsafe_code)]
 pub mod model;
 pub use model::*;
+mod bundle;
+pub use bundle::*;
 mod store;
 pub use store::*;
 /// Errors are intentionally free of source paths and record contents.

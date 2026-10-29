@@ -15,6 +15,22 @@ use zeus_verify::{
     audit::{AuditEntry, AuditOutcome, AuditSink},
     hash::{Digests, DualHasher},
 };
+#[path = "maintenance.rs"]
+mod maintenance;
+pub use maintenance::*;
+
+enum IngestSource<'a> {
+    Path(&'a Path),
+    Bytes(&'a [u8]),
+}
+struct ImportPolicy<'a> {
+    exporter: &'a str,
+    via: &'a str,
+    retention: Retention,
+    until: Option<Timestamp>,
+    exact_source: bool,
+}
+
 const SNAPSHOT: TableDefinition<&str, &[u8]> = TableDefinition::new("artifact_index");
 /// Backend boundary: an atomic, durable index snapshot. Alternative backends must preserve atomicity.
 pub trait ArtifactIndex: Send + Sync {
@@ -540,29 +556,37 @@ impl ArtifactStore {
         expected: Option<Digests>,
         evidence: Option<ImportEvidence>,
     ) -> Result<Artifact> {
+        self.ingest_input_locked(IngestSource::Path(source), draft, key, expected, evidence)
+    }
+    fn ingest_input_locked(
+        &self,
+        source: IngestSource<'_>,
+        draft: ArtifactDraft,
+        key: Option<&str>,
+        expected: Option<Digests>,
+        evidence: Option<ImportEvidence>,
+    ) -> Result<Artifact> {
         validate_key(key)?;
         let mut state = self.load()?;
         if let Some(id) = key.and_then(|k| state.ingest_keys.get(k)) {
             return state.get(*id);
         }
-        let source_meta = self
-            .fs
-            .metadata(source)?
-            .ok_or(ArtifactError::ObjectAbsent)?;
-        if !source_meta.is_regular_file {
-            return Err(ArtifactError::RecordInvalid(
-                "ingest requires a regular file",
-            ));
-        }
-        if self.config.quota_bytes.is_some_and(|q| source_meta.len > q) {
+        let source_len = match &source {
+            IngestSource::Path(path) => {
+                let meta = self.fs.metadata(path)?.ok_or(ArtifactError::ObjectAbsent)?;
+                if !meta.is_regular_file {
+                    return Err(ArtifactError::RecordInvalid(
+                        "ingest requires a regular file",
+                    ));
+                }
+                meta.len
+            }
+            IngestSource::Bytes(bytes) => bytes.len() as u64,
+        };
+        if self.config.quota_bytes.is_some_and(|q| source_len > q) {
             return Err(ArtifactError::QuotaExceeded);
         }
-        if self
-            .fs
-            .free_space(&self.root)?
-            .saturating_sub(source_meta.len)
-            < self.config.min_free_bytes
-        {
+        if self.fs.free_space(&self.root)?.saturating_sub(source_len) < self.config.min_free_bytes {
             return Err(ArtifactError::QuotaExceeded);
         }
         let tmp = self
@@ -570,7 +594,16 @@ impl ArtifactStore {
             .join("tmp")
             .join(format!("{}.zpart", IdGenerator::new().next_ulid()));
         self.ensure_internal(&tmp)?;
-        if let Err(error) = self.copy(source, &tmp) {
+        let copied = match source {
+            IngestSource::Path(path) => self.copy(path, &tmp),
+            IngestSource::Bytes(bytes) => (|| -> Result<()> {
+                let file = self.fs.create_new(&tmp)?;
+                file.write_all_at(0, bytes)?;
+                file.sync_all()?;
+                Ok(())
+            })(),
+        };
+        if let Err(error) = copied {
             let _ = self.fs.remove_file(&tmp);
             return Err(error);
         }
@@ -731,6 +764,31 @@ impl ArtifactStore {
         retention: Retention,
     ) -> Result<Artifact> {
         let _guard = self.guard()?;
+        self.import_locked(
+            received,
+            source.map(IngestSource::Path),
+            ImportPolicy {
+                exporter,
+                via,
+                retention,
+                until: None,
+                exact_source: false,
+            },
+        )
+    }
+    fn import_locked(
+        &self,
+        received: &Value,
+        source: Option<IngestSource<'_>>,
+        policy: ImportPolicy<'_>,
+    ) -> Result<Artifact> {
+        let ImportPolicy {
+            exporter,
+            via,
+            retention,
+            until,
+            exact_source,
+        } = policy;
         zeus_verify::canonical::check_hashable(received)?;
         let received_bytes = serde_json::to_vec(received)?;
         if received_bytes.len() > 256 << 10
@@ -749,7 +807,10 @@ impl ArtifactStore {
         let import_key = format!("{}/{}", original.store_id, original.id);
         if let Some(id) = state.imports.get(&import_key) {
             let saved = state.get(*id)?;
-            if saved.digests() != original.digests() {
+            if saved.digests() != original.digests()
+                || (exact_source
+                    && state.import_sources.get(&saved.id.to_string()) != Some(received))
+            {
                 return Err(ArtifactError::ImportConflict);
             }
             return Ok(saved);
@@ -762,9 +823,25 @@ impl ArtifactStore {
         }
         let present = existing.is_some_and(|o| o.state == ObjectState::Present);
         let mut record = original.clone();
+        // A foreign producer cannot clear this store's quarantine for equal bytes or known inputs.
+        for known in state.artifacts.values().filter(|known| {
+            known.quarantined
+                && (known.blake3 == record.blake3
+                    || original
+                        .parents
+                        .iter()
+                        .any(|parent| parent.blake3 == known.blake3))
+        }) {
+            record.quarantined = true;
+            for reason in &known.quarantine_reasons {
+                if !record.quarantine_reasons.contains(reason) {
+                    record.quarantine_reasons.push(*reason);
+                }
+            }
+        }
         record.audit = None;
         record.retention = retention;
-        record.retain_until = None;
+        record.retain_until = until;
         for parent in &mut record.parents {
             parent.artifact_id = parent.artifact_id.and_then(|id| {
                 state
@@ -800,7 +877,7 @@ impl ArtifactStore {
             record: received.clone(),
         });
         let artifact = if !present && let Some(source) = source {
-            self.ingest_locked(
+            self.ingest_input_locked(
                 source,
                 ArtifactDraft { record },
                 None,
@@ -1195,19 +1272,43 @@ impl ArtifactStore {
     /// Restore an absent or damaged object after recomputing the expected content triple.
     pub fn repair_from_file(&self, id: ArtifactId, source: &Path) -> Result<()> {
         let _guard = self.guard()?;
+        self.repair_input_locked(id, IngestSource::Path(source))
+    }
+    /// Restore exact content from bytes already read through a retained, authorized source handle.
+    /// Verify before staging; present content is checked rather than blindly accepted on recovery.
+    pub fn repair_from_bytes(&self, id: ArtifactId, bytes: &[u8]) -> Result<()> {
+        let _guard = self.guard()?;
+        let record = self.load()?.get(id)?;
+        if zeus_verify::hash::hash_bytes(bytes) != record.digests() {
+            return Err(ArtifactError::DigestMismatch);
+        }
+        self.repair_input_locked(id, IngestSource::Bytes(bytes))
+    }
+    fn repair_input_locked(&self, id: ArtifactId, source: IngestSource<'_>) -> Result<()> {
         let mut state = self.load()?;
         let artifact = state.get(id)?;
         if artifact.state != ArtifactState::Active {
             return Err(ArtifactError::NotFound);
         }
         if artifact.object.state == ObjectState::Present {
+            if self.hash(&self.object_path(artifact.blake3))? != artifact.digests() {
+                return Err(ArtifactError::DigestMismatch);
+            }
             return Ok(());
         }
         let tmp = self
             .root
             .join("tmp")
             .join(format!("{}.zpart", IdGenerator::new().next_ulid()));
-        self.copy(source, &tmp)?;
+        self.ensure_internal(&tmp)?;
+        match source {
+            IngestSource::Path(path) => self.copy(path, &tmp)?,
+            IngestSource::Bytes(bytes) => {
+                let file = self.fs.create_new(&tmp)?;
+                file.write_all_at(0, bytes)?;
+                file.sync_all()?;
+            }
+        }
         if self.hash(&tmp)? != artifact.digests() {
             self.fs.remove_file(&tmp)?;
             return Err(ArtifactError::DigestMismatch);
