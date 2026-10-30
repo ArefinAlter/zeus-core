@@ -100,7 +100,9 @@ impl HttpTransport for ReqwestTransport {
 
 fn map_error(error: reqwest::Error) -> TransportError {
     // Error text from reqwest may include the complete URL. Never forward it.
-    let kind = if error.is_timeout() {
+    let kind = if let Some(failure) = tls_failure(&error) {
+        failure
+    } else if error.is_timeout() {
         TransportFailure::ReadTimeout
     } else if error.is_connect() {
         TransportFailure::ConnectionRefused
@@ -112,9 +114,72 @@ fn map_error(error: reqwest::Error) -> TransportError {
     TransportError::new(kind, "HTTP transport failed")
 }
 
+// Inspect typed causes, never Display text (which may contain a signed URL). io::Error's
+// source can skip its wrapped error, so inspect its payload before following source().
+fn tls_failure(mut error: &(dyn std::error::Error + 'static)) -> Option<TransportFailure> {
+    for _ in 0..64 {
+        if let Some(tls) = error.downcast_ref::<rustls::Error>() {
+            return Some(match tls {
+                rustls::Error::InvalidCertificate(_) | rustls::Error::NoCertificatesPresented => {
+                    TransportFailure::TlsCertificate
+                }
+                _ => TransportFailure::TlsHandshake,
+            });
+        }
+        if let Some(inner) = error
+            .downcast_ref::<std::io::Error>()
+            .and_then(std::io::Error::get_ref)
+        {
+            error = inner;
+        } else if let Some(inner) = error.source() {
+            error = inner;
+        } else {
+            break;
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("connection wrapper")]
+    struct Wrapped(#[source] std::io::Error);
+
+    #[test]
+    fn certificate_causes_survive_connection_and_io_wrappers() {
+        for certificate in [
+            rustls::CertificateError::Expired,
+            rustls::CertificateError::NotValidYet,
+            rustls::CertificateError::UnknownIssuer,
+        ] {
+            let error = Wrapped(std::io::Error::other(rustls::Error::InvalidCertificate(
+                certificate,
+            )));
+            assert_eq!(tls_failure(&error), Some(TransportFailure::TlsCertificate));
+        }
+        assert_eq!(
+            tls_failure(&rustls::Error::NoCertificatesPresented),
+            Some(TransportFailure::TlsCertificate)
+        );
+    }
+
+    #[test]
+    fn handshake_errors_are_distinct_and_message_text_cannot_spoof_a_certificate_error() {
+        let handshake = Wrapped(std::io::Error::other(rustls::Error::General(
+            "handshake failed".into(),
+        )));
+        assert_eq!(
+            tls_failure(&handshake),
+            Some(TransportFailure::TlsHandshake)
+        );
+        let message = std::io::Error::other(
+            "invalid certificate at https://fixture.invalid/?key=not-a-credential",
+        );
+        assert_eq!(tls_failure(&message), None);
+    }
 
     #[test]
     fn the_client_builds_with_the_default_configuration() {

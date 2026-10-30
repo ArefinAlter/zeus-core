@@ -12,7 +12,7 @@ publish.workspace = true
 [features]
 default = ["reqwest-transport"]
 # The production transport on reqwest + rustls. Off for embedders that bring their own HttpTransport.
-reqwest-transport = ["dep:reqwest"]
+reqwest-transport = ["dep:reqwest", "dep:rustls"]
 
 [dependencies]
 zeus-types.workspace = true
@@ -31,6 +31,7 @@ percent-encoding.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
 tokio-util = { workspace = true, features = ["rt"] }
 reqwest = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["sync", "time", "rt", "macros", "net", "test-util"] }
