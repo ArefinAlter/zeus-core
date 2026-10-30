@@ -1,6 +1,7 @@
 //! Session consent is exercised through real journal transactions and a hermetic HTTPS transport.
 use async_trait::async_trait;
 use bytes::Bytes;
+use futures::StreamExt;
 use http::{HeaderMap, HeaderValue, StatusCode, Version};
 use std::{
     collections::BTreeMap,
@@ -220,7 +221,13 @@ struct Rig {
     browser: Arc<Browser>,
 }
 async fn rig(redirect: bool, connected: bool) -> Rig {
-    rig_with_proxy(redirect, connected, None).await
+    let proxy: Option<Arc<dyn ProxyFetch>> = connected.then(|| {
+        Arc::new(Proxy {
+            bad_offset: false,
+            calls: AtomicUsize::new(0),
+        }) as Arc<dyn ProxyFetch>
+    });
+    rig_with_proxy(redirect, connected, proxy).await
 }
 async fn rig_with_proxy(
     redirect: bool,
@@ -399,17 +406,8 @@ async fn session_requires_durable_approval_and_secrets_do_not_cross_redirects_or
         std::fs::read(job.result.unwrap().path).unwrap(),
         r.transport.data
     );
-    for request in r.transport.requests.lock().unwrap().iter() {
-        if request.url.host_str() == Some("source.example") {
-            assert_eq!(
-                request.headers["cookie"],
-                "session_canary=SECRET-COOKIE-MARKER"
-            );
-        } else {
-            assert!(!request.headers.contains_key("cookie"));
-            assert!(!request.headers.contains_key("user-agent"));
-        }
-    }
+    assert_eq!(r.browser.calls.load(Ordering::SeqCst), 0);
+    assert!(r.transport.requests.lock().unwrap().is_empty());
     let events = r.journal.read(|t| t.events_since(None, 1000)).unwrap();
     let encoded = serde_json::to_string(&events).unwrap();
     for secret in [
@@ -587,7 +585,10 @@ impl ProxyFetch for Proxy {
                 redirected: false,
                 headers,
             },
-            body: Box::pin(futures::stream::iter(chunks)),
+            body: Box::pin(futures::stream::iter(chunks).then(|chunk| async move {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                chunk
+            })),
         })
     }
     fn available(&self, _: Option<&str>) -> bool {
@@ -652,6 +653,25 @@ async fn auto_session_prefers_browser_proxy_without_exporting_cookies() {
     assert_eq!(r.browser.calls.load(Ordering::SeqCst), 0);
     assert!(r.transport.requests.lock().unwrap().is_empty());
     assert!(proxy.calls.load(Ordering::SeqCst) > 0);
+    r.engine.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn connected_legacy_provider_cannot_release_cookies_without_browser_proxy() {
+    let r = rig_with_proxy(false, true, None).await;
+    let accepted = enqueue(&r).await;
+    approve(&r, accepted.approval.unwrap()).await;
+    until(&r, accepted.job.id, |j| {
+        j.state == JobState::AwaitingSession
+    })
+    .await;
+    r.engine.refresh_sessions().await.unwrap();
+    assert_eq!(
+        r.engine.get(accepted.job.id).await.unwrap().state,
+        JobState::AwaitingSession
+    );
+    assert_eq!(r.browser.calls.load(Ordering::SeqCst), 0);
+    assert!(r.transport.requests.lock().unwrap().is_empty());
     r.engine.shutdown().await.unwrap();
 }
 
