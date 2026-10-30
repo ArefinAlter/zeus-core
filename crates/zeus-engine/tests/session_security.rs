@@ -88,7 +88,7 @@ impl ApprovalPort for JoiningApprovals {
     }
 }
 async fn joining_rig(race: bool) -> Rig {
-    rig_with(false, true, None, move |clock, journal| {
+    rig_with(false, true, None, true, move |clock, journal| {
         Arc::new(JoiningApprovals {
             first: Approvals {
                 clock,
@@ -234,7 +234,7 @@ async fn rig_with_proxy(
     connected: bool,
     proxy: Option<Arc<dyn ProxyFetch>>,
 ) -> Rig {
-    rig_with(redirect, connected, proxy, |clock, _| {
+    rig_with(redirect, connected, proxy, true, |clock, _| {
         Arc::new(Approvals {
             clock,
             ids: IdGenerator::new(),
@@ -246,6 +246,7 @@ async fn rig_with(
     redirect: bool,
     connected: bool,
     proxy: Option<Arc<dyn ProxyFetch>>,
+    with_audit: bool,
     approvals: impl FnOnce(SharedClock, Journal) -> Arc<dyn ApprovalPort>,
 ) -> Rig {
     let dir = TempDir::new().unwrap();
@@ -285,8 +286,10 @@ async fn rig_with(
         .journal(journal.clone())
         .transport(transport.clone())
         .session_provider(browser.clone())
-        .audit(audit)
         .approvals(approvals(clock, journal.clone()));
+    if with_audit {
+        builder = builder.audit(audit);
+    }
     if let Some(proxy) = proxy {
         builder = builder.proxy_fetch(proxy);
     }
@@ -653,6 +656,13 @@ async fn auto_session_prefers_browser_proxy_without_exporting_cookies() {
     assert_eq!(r.browser.calls.load(Ordering::SeqCst), 0);
     assert!(r.transport.requests.lock().unwrap().is_empty());
     assert!(proxy.calls.load(Ordering::SeqCst) > 0);
+    assert!(
+        r.browser
+            .audit
+            .to_values()
+            .iter()
+            .any(|v| v["action"] == "session.proxy_requested")
+    );
     r.engine.shutdown().await.unwrap();
 }
 
@@ -672,6 +682,40 @@ async fn connected_legacy_provider_cannot_release_cookies_without_browser_proxy(
     );
     assert_eq!(r.browser.calls.load(Ordering::SeqCst), 0);
     assert!(r.transport.requests.lock().unwrap().is_empty());
+    r.engine.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browser_proxy_without_audit_never_reaches_the_extension() {
+    let proxy = Arc::new(Proxy {
+        bad_offset: false,
+        calls: AtomicUsize::new(0),
+    });
+    let r = rig_with(false, false, Some(proxy.clone()), false, |clock, _| {
+        Arc::new(Approvals {
+            clock,
+            ids: IdGenerator::new(),
+        })
+    })
+    .await;
+    let accepted = enqueue(&r).await;
+    approve(&r, accepted.approval.unwrap()).await;
+    let failed = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let job = r.engine.get(accepted.job.id).await.unwrap();
+            if job.state == JobState::Failed {
+                break job;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        failed.error.unwrap().code.as_str(),
+        codes::AUDIT_UNAVAILABLE
+    );
+    assert_eq!(proxy.calls.load(Ordering::SeqCst), 0);
     r.engine.shutdown().await.unwrap();
 }
 

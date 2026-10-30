@@ -2843,15 +2843,15 @@ impl Engine {
             )
         })?;
         self.ensure_running()?;
-        if !matches!(
-            self.effective_grant(&origin, Some(id), record.job.spec.source.run_id)?,
-            zeus_session::consent::Resolution::Allowed(_)
-        ) {
-            return Err(rejected(
-                codes::POLICY_APPROVAL_DENIED,
-                "browser transport grant is not effective",
-            ));
-        }
+        let grant = match self.effective_grant(&origin, Some(id), record.job.spec.source.run_id)? {
+            zeus_session::consent::Resolution::Allowed(grant) => grant,
+            _ => {
+                return Err(rejected(
+                    codes::POLICY_APPROVAL_DENIED,
+                    "browser transport grant is not effective",
+                ));
+            }
+        };
         let profile = record
             .job
             .spec
@@ -2868,6 +2868,34 @@ impl Engine {
             self.await_session(id, &origin)?;
             return Ok(None);
         };
+        let audit = self.inner.audit.as_ref().ok_or_else(|| {
+            rejected(
+                codes::AUDIT_UNAVAILABLE,
+                "browser transport requires a durable audit sink",
+            )
+        })?;
+        let mut entry = zeus_verify::AuditEntry::new(
+            self.inner.clock.now(),
+            Actor::engine(),
+            zeus_verify::audit::actions::SESSION_PROXY_REQUESTED,
+            zeus_verify::AuditOutcome::Ok,
+        );
+        entry.subject = zeus_verify::AuditSubject {
+            job_id: Some(id),
+            grant_id: Some(grant.id),
+            origin: Some(origin.clone()),
+            ..Default::default()
+        };
+        audit.append(entry)?;
+        self.ensure_running()?;
+        if !matches!(self.effective_grant(&origin, Some(id), record.job.spec.source.run_id)?,
+            zeus_session::consent::Resolution::Allowed(current) if current.id == grant.id)
+        {
+            return Err(rejected(
+                codes::POLICY_APPROVAL_DENIED,
+                "grant changed before browser request",
+            ));
+        }
         Ok(Some(Arc::new(crate::proxy::BrowserTransport {
             provider: provider.clone(),
             job_id: id,
