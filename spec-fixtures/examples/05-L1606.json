@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":601,"method":"inbox.packages.put","params":{"untrusted_name":"Collected papers","rules":[{"id":"papers","origin":"https://example.org","filename_suffix":".pdf","filename_prefix":"paper_"}],"initial_entries":[{"job":{"url":"https://example.org/report.pdf"}}],"idempotency_key":"papers-intake-1"}}

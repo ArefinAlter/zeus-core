@@ -638,6 +638,24 @@ async fn browser_proxy_requires_approval_and_downloads_without_releasing_cookie_
     r.engine.shutdown().await.unwrap();
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_session_prefers_browser_proxy_without_exporting_cookies() {
+    let proxy = Arc::new(Proxy {
+        bad_offset: false,
+        calls: AtomicUsize::new(0),
+    });
+    let r = rig_with_proxy(false, false, Some(proxy.clone())).await;
+    let accepted = enqueue(&r).await;
+    assert_eq!(accepted.job.state, JobState::AwaitingApproval);
+    approve(&r, accepted.approval.unwrap()).await;
+    let job = until(&r, accepted.job.id, |j| j.state == JobState::Completed).await;
+    assert_eq!(job.transport, zeus_types::Transport::BrowserProxy);
+    assert_eq!(r.browser.calls.load(Ordering::SeqCst), 0);
+    assert!(r.transport.requests.lock().unwrap().is_empty());
+    assert!(proxy.calls.load(Ordering::SeqCst) > 0);
+    r.engine.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn browser_proxy_wrong_offsets_never_commit() {
     let r = rig_with_proxy(
         false,

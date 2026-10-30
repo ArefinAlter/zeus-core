@@ -606,6 +606,20 @@
           "x-zeus-secret": true,
           "writeOnly": true
         },
+        "initial_entries": {
+          "description": "Create only: atomically retain1–200 private requests with the package (512KiB total call).\nOmission creates an empty package. Updates must omit this field.",
+          "items": {
+            "$ref": "#/$defs/InboxIntakeItem"
+          },
+          "type": [
+            "array",
+            "null"
+          ],
+          "minItems": 1,
+          "maxItems": 200,
+          "writeOnly": true,
+          "x-zeus-secret": true
+        },
         "package_id": {
           "default": null,
           "description": "Absent creates a daemon-minted package; present edits an existing owned package.",
@@ -614,6 +628,17 @@
             "string",
             "null"
           ]
+        },
+        "rules": {
+          "description": "Replace ordered rules (at most32). Omission preserves existing rules; [] explicitly clears.",
+          "items": {
+            "$ref": "#/$defs/InboxRule"
+          },
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 32
         },
         "untrusted_name": {
           "description": "Untrusted display name, bounded to160 UTF-8 bytes.",
@@ -677,6 +702,14 @@
           "minimum": 0,
           "type": "integer",
           "maximum": 9007199254740991
+        },
+        "rules": {
+          "description": "Ordered first-match rules, at most32. Empty in older saved packages.",
+          "items": {
+            "$ref": "#/$defs/InboxRule"
+          },
+          "type": "array",
+          "maxItems": 32
         },
         "untrusted_name": {
           "description": "Person/agent-provided display text; never executable instructions.",
@@ -770,6 +803,13 @@
         },
         "filename": {
           "description": "Reviewed filename after safe naming/collision planning, if valid.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "matched_rule": {
+          "description": "First matching rule, if any; bound to the exact reviewed package revision.",
           "type": [
             "string",
             "null"
@@ -898,6 +938,59 @@
         "ready_entries",
         "remaining_pending",
         "replayed"
+      ],
+      "type": "object"
+    },
+    "InboxRule": {
+      "additionalProperties": false,
+      "description": "One bounded first-match package rule. It changes reviewed defaults, never execution authority.",
+      "properties": {
+        "dest_dir": {
+          "description": "Default destination for matching entries without an explicit destination.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filename_prefix": {
+          "description": "ASCII filename prefix (letters, digits, `_` or `-`), applied before safe-name planning.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "filename_suffix": {
+          "description": "Case-insensitive suffix of the requested filename, such as `.pdf` or `.tar.gz`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^\\.[A-Za-z0-9._-]+$"
+        },
+        "id": {
+          "description": "Stable local identifier,1–64 ASCII letters, digits, underscores or hyphens.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "origin": {
+          "description": "Exact normalized HTTP(S) origin; no credentials, path, query or wildcard.",
+          "maxLength": 300,
+          "pattern": "^https?://(\\[[0-9a-f:.]+\\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:[0-9]{1,5})?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
       ],
       "type": "object"
     },

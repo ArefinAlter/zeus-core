@@ -9104,6 +9104,135 @@
         }
       },
       "type": "object"
+    },
+    "ArtifactsMaintenancePreviewParams": {
+      "$ref": "https://zeus.invalid/schema/artifact-maintenance.v1#/$defs/ArtifactsMaintenancePreviewParams"
+    },
+    "ArtifactsMaintenancePreviewResult": {
+      "$ref": "https://zeus.invalid/schema/artifact-maintenance.v1#/$defs/ArtifactsMaintenancePreviewResult"
+    },
+    "ArtifactsMaintenancePreviewRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "artifacts.maintenance.preview"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsMaintenancePreviewParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "ArtifactsMaintenancePreviewResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsMaintenancePreviewResult"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsMaintenanceApplyParams": {
+      "$ref": "https://zeus.invalid/schema/artifact-maintenance.v1#/$defs/ArtifactsMaintenanceApplyParams"
+    },
+    "ArtifactsMaintenanceApplyResult": {
+      "$ref": "https://zeus.invalid/schema/artifact-maintenance.v1#/$defs/ArtifactsMaintenanceApplyResult"
+    },
+    "ArtifactsMaintenanceApplyRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "artifacts.maintenance.apply"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsMaintenanceApplyParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "ArtifactsMaintenanceApplyResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsMaintenanceApplyResult"
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactsEventsParams": {
+      "$ref": "https://zeus.invalid/schema/artifact-maintenance.v1#/$defs/ArtifactsEventsParams"
+    },
+    "ArtifactsEventsResult": {
+      "$ref": "https://zeus.invalid/schema/artifact-maintenance.v1#/$defs/ArtifactsEventsResult"
+    },
+    "ArtifactsEventsRequest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RequestBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "const": "artifacts.events"
+            },
+            "params": {
+              "$ref": "#/$defs/ArtifactsEventsParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ]
+        }
+      ]
+    },
+    "ArtifactsEventsResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SuccessBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ArtifactsEventsResult"
+            }
+          }
+        }
+      ]
     }
   }
 }

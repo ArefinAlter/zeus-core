@@ -2154,7 +2154,16 @@ impl Engine {
             }
             None => self.inner.transport.clone(),
         };
-        let mut browser_proxy = spec.transport_hint() == TransportHint::BrowserProxy;
+        // A configured browser oracle handles every session-authenticated request;
+        // raw cookie leases are never needed on this path.
+        let mut browser_proxy = spec.transport_hint() == TransportHint::BrowserProxy
+            || (spec.session_origin.is_some() && self.inner.proxy.is_some());
+        if browser_proxy && spec.source.kind == SourceKind::Workflow {
+            return Err(rejected(
+                codes::POLICY_APPROVAL_DENIED,
+                "browser sessions are unavailable to workflow jobs without an enforcing browser transport",
+            ));
+        }
         let mut session = if browser_proxy {
             match self.browser_transport(id)? {
                 Some(proxy) => {
@@ -2360,96 +2369,97 @@ impl Engine {
                 let mut buffer =
                     Vec::with_capacity(self.inner.config.commit.commit_unit_bytes as usize);
                 let mut offset = 0u64;
-            loop {
-                if session.as_ref().is_some_and(|b| {
-                    b.material.issued_at.saturating_add_ms(b.material.ttl_ms)
-                        <= self.inner.clock.now()
-                }) {
-                    return Err(rejected(
-                        codes::HTTP_FORBIDDEN_SESSION,
-                        "session lease expired during transfer",
-                    ));
-                }
-                let next = tokio::select! { biased; _ = cancel.cancelled() => return Err(HttpError::Canceled.into()), chunk = body.next() => chunk };
-                let Some(chunk) = next else {
-                    break;
-                };
-                let chunk = chunk.map_err(|e| {
-                    EngineError::Rejected(
-                        zeus_http::classify_transport(e.kind).envelope("download stream failed"),
-                    )
-                })?;
-                if probe
-                    .result
-                    .total_bytes
-                    .is_some_and(|t| offset + buffer.len() as u64 + chunk.len() as u64 > t)
-                {
-                    return Err(rejected(
-                        codes::INTEGRITY_RANGE_OVERRUN,
-                        "stream exceeds declared size",
-                    ));
-                }
-                for mut part in chunk.chunks(64 * 1024) {
-                    while !part.is_empty() {
-                        let count = part.len().min(
-                            self.inner.config.commit.commit_unit_bytes as usize - buffer.len(),
-                        );
-                        buffer.extend_from_slice(&part[..count]);
-                        part = &part[count..];
-                        if buffer.len() as u64 == self.inner.config.commit.commit_unit_bytes {
-                            self.write_unit(
-                                file.clone(),
-                                id,
-                                record.internal.epoch,
-                                offset,
-                                std::mem::take(&mut buffer),
-                            )
-                            .await?;
-                            offset += self.inner.config.commit.commit_unit_bytes;
+                loop {
+                    if session.as_ref().is_some_and(|b| {
+                        b.material.issued_at.saturating_add_ms(b.material.ttl_ms)
+                            <= self.inner.clock.now()
+                    }) {
+                        return Err(rejected(
+                            codes::HTTP_FORBIDDEN_SESSION,
+                            "session lease expired during transfer",
+                        ));
+                    }
+                    let next = tokio::select! { biased; _ = cancel.cancelled() => return Err(HttpError::Canceled.into()), chunk = body.next() => chunk };
+                    let Some(chunk) = next else {
+                        break;
+                    };
+                    let chunk = chunk.map_err(|e| {
+                        EngineError::Rejected(
+                            zeus_http::classify_transport(e.kind)
+                                .envelope("download stream failed"),
+                        )
+                    })?;
+                    if probe
+                        .result
+                        .total_bytes
+                        .is_some_and(|t| offset + buffer.len() as u64 + chunk.len() as u64 > t)
+                    {
+                        return Err(rejected(
+                            codes::INTEGRITY_RANGE_OVERRUN,
+                            "stream exceeds declared size",
+                        ));
+                    }
+                    for mut part in chunk.chunks(64 * 1024) {
+                        while !part.is_empty() {
+                            let count = part.len().min(
+                                self.inner.config.commit.commit_unit_bytes as usize - buffer.len(),
+                            );
+                            buffer.extend_from_slice(&part[..count]);
+                            part = &part[count..];
+                            if buffer.len() as u64 == self.inner.config.commit.commit_unit_bytes {
+                                self.write_unit(
+                                    file.clone(),
+                                    id,
+                                    record.internal.epoch,
+                                    offset,
+                                    std::mem::take(&mut buffer),
+                                )
+                                .await?;
+                                offset += self.inner.config.commit.commit_unit_bytes;
+                            }
                         }
                     }
                 }
-            }
-            if !buffer.is_empty() {
-                let len = buffer.len() as u64;
-                self.write_unit(file.clone(), id, record.internal.epoch, offset, buffer)
-                    .await?;
-                offset += len;
-            }
-            if probe.result.total_bytes.is_some_and(|t| t != offset) {
+                if !buffer.is_empty() {
+                    let len = buffer.len() as u64;
+                    self.write_unit(file.clone(), id, record.internal.epoch, offset, buffer)
+                        .await?;
+                    offset += len;
+                }
+                if probe.result.total_bytes.is_some_and(|t| t != offset) {
+                    return Err(rejected(
+                        codes::NET_PREMATURE_EOF,
+                        "stream ended before declared size",
+                    ));
+                }
+                if self.record(id)?.job.state == JobState::Downloading {
+                    self.inner.journal.transact(|t| {
+                        let mut r = t
+                            .job(id)?
+                            .ok_or(zeus_journal::JournalError::Invariant("missing job"))?;
+                        r.internal.total_bytes = Some(offset);
+                        r.internal.eof_size = Some(offset);
+                        r.internal.data_complete = true;
+                        r.job.progress.bytes_total = Some(offset);
+                        t.put_job(&r)
+                    })?;
+                    self.transition(
+                        id,
+                        "S20",
+                        TransitionActor::Engine,
+                        StateCause::AllCommitted,
+                        vec![],
+                        vec![],
+                        |_| Ok(()),
+                    )?;
+                }
+            } else {
                 return Err(rejected(
-                    codes::NET_PREMATURE_EOF,
-                    "stream ended before declared size",
+                    codes::HTTP_PROTOCOL_ERROR,
+                    "resource has no usable download stream",
                 ));
             }
-            if self.record(id)?.job.state == JobState::Downloading {
-                self.inner.journal.transact(|t| {
-                    let mut r = t
-                        .job(id)?
-                        .ok_or(zeus_journal::JournalError::Invariant("missing job"))?;
-                    r.internal.total_bytes = Some(offset);
-                    r.internal.eof_size = Some(offset);
-                    r.internal.data_complete = true;
-                    r.job.progress.bytes_total = Some(offset);
-                    t.put_job(&r)
-                })?;
-                self.transition(
-                    id,
-                    "S20",
-                    TransitionActor::Engine,
-                    StateCause::AllCommitted,
-                    vec![],
-                    vec![],
-                    |_| Ok(()),
-                )?;
-            }
-        } else {
-            return Err(rejected(
-                codes::HTTP_PROTOCOL_ERROR,
-                "resource has no usable download stream",
-            ));
         }
-    }
         if cancel.is_cancelled() {
             return Err(HttpError::Canceled.into());
         }

@@ -945,9 +945,18 @@
     "chain": false
   },
   {
-    "file": "examples/05-L1598.json",
+    "file": "examples/05-L1602.json",
     "doc": "05-daemon-api-v1.md",
-    "line": 1598,
+    "line": 1602,
+    "schema": "daemon-api.v1",
+    "def": "InboxPackagesPutRequest",
+    "kind": "json",
+    "chain": false
+  },
+  {
+    "file": "examples/05-L1606.json",
+    "doc": "05-daemon-api-v1.md",
+    "line": 1606,
     "schema": "daemon-api.v1",
     "def": "InboxPackagesPutRequest",
     "kind": "json",
@@ -1377,63 +1386,63 @@
     "chain": false
   },
   {
-    "file": "examples/06-L1255.json",
+    "file": "examples/06-L1257.json",
     "doc": "06-mcp-tools-v1.md",
-    "line": 1255,
+    "line": 1257,
     "schema": "mcp-tools.v1",
     "def": "ArtifactsInput",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/06-L1259.json",
+    "file": "examples/06-L1261.json",
     "doc": "06-mcp-tools-v1.md",
-    "line": 1259,
+    "line": 1261,
     "schema": "mcp-tools.v1",
     "def": "ArtifactsOutput",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/06-L1273.json",
+    "file": "examples/06-L1275.json",
     "doc": "06-mcp-tools-v1.md",
-    "line": 1273,
+    "line": 1275,
     "schema": "mcp-tools.v1",
     "def": "InboxInput",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/06-L1320.json",
+    "file": "examples/06-L1322.json",
     "doc": "06-mcp-tools-v1.md",
-    "line": 1320,
+    "line": 1322,
     "schema": "mcp-tools.v1",
     "def": "ProgressParams",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/06-L1386.json",
+    "file": "examples/06-L1388.json",
     "doc": "06-mcp-tools-v1.md",
-    "line": 1386,
+    "line": 1388,
     "schema": "mcp-tools.v1",
     "def": "JobResource",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/06-L1419.json",
+    "file": "examples/06-L1421.json",
     "doc": "06-mcp-tools-v1.md",
-    "line": 1419,
+    "line": 1421,
     "schema": "mcp-tools.v1",
     "def": "AuditTodayResource",
     "kind": "json",
     "chain": false
   },
   {
-    "file": "examples/06-L1469.json",
+    "file": "examples/06-L1471.json",
     "doc": "06-mcp-tools-v1.md",
-    "line": 1469,
+    "line": 1471,
     "schema": "mcp-tools.v1",
     "def": "RescuePromptArguments",
     "kind": "json",

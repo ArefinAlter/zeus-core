@@ -2451,6 +2451,32 @@
                 "action",
                 "preview"
               ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "maintenance"
+                },
+                "phase": {
+                  "enum": [
+                    "preview",
+                    "apply",
+                    "events",
+                    "status"
+                  ]
+                },
+                "request": {
+                  "type": "object",
+                  "description": "Typed parameters. Preview: operation export/import/collect/repair/scrub. Apply/status: saved plan+plan_hash. Events: after_seq,limit,chain_id."
+                }
+              },
+              "required": [
+                "action",
+                "phase",
+                "request"
+              ]
             }
           ]
         }
