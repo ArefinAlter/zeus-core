@@ -796,10 +796,12 @@ impl Job {
             quarantined: self.quarantined,
             source_kind: self.spec.source.kind,
             filename: self
-                .probe
+                .result
                 .as_ref()
-                .map(|p| p.filename.value.clone())
-                .or_else(|| self.spec.filename.clone()),
+                .and_then(|r| std::path::Path::new(&r.path).file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .or_else(|| self.spec.filename.clone())
+                .or_else(|| self.probe.as_ref().map(|p| p.filename.value.clone())),
             url_redacted: self.spec.url.redact(crate::redact::RedactMode::Log),
             origin: Some(self.spec.origin()),
             bytes_done: self.progress.bytes_done,

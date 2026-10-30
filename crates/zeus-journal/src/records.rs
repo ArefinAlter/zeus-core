@@ -204,6 +204,11 @@ impl JobRecord {
     #[must_use]
     pub fn summary(&self) -> zeus_types::JobSummary {
         let mut summary = self.job.summary();
+        // The reserved destination includes sanitization and collision renames.
+        // Server metadata must never make the UI open a different filename.
+        if let Some(name) = std::path::Path::new(&self.internal.dest_path).file_name() {
+            summary.filename = Some(name.to_string_lossy().into_owned());
+        }
         summary.state_seq = zeus_types::EventSeq::new(self.internal.last_state_seq).ok();
         summary
     }

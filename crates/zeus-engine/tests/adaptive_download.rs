@@ -173,8 +173,17 @@ async fn wait(engine: &Engine, id: JobId) {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
-    .await
-    .unwrap();
+    .await;
+    let job = match job {
+        Ok(job) => job,
+        Err(_) => {
+            let current = engine.get(id).await.unwrap();
+            panic!(
+                "download timed out: state={:?}, progress={:?}, error={:?}",
+                current.state, current.progress, current.error
+            );
+        }
+    };
     assert_eq!(job.state, JobState::Completed, "{:?}", job.error);
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
