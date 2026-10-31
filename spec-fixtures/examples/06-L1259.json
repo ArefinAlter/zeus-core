@@ -1,1 +1,1 @@
-{"operation":"artifacts.list","untrusted_data":{"items":[],"next_cursor":null},"truncated":false,"next":{"action":"none"}}
+{"idempotency_key":"list-artifacts-1","request":{"action":"list","state":"active","limit":20}}

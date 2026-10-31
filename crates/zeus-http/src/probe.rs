@@ -132,10 +132,8 @@ impl Prober for HttpProber {
         cancel: &CancellationToken,
     ) -> HttpResult<ProbeOutcome> {
         use crate::response::{compare_validators, failure, send_following, validators, value};
-        use zeus_types::job::{FilenameSource, HttpVersion};
-        use zeus_types::{
-            ProbeMethod, RangeSupport, RedactMode, ResolvedFilename, Timestamp, codes,
-        };
+        use zeus_types::job::HttpVersion;
+        use zeus_types::{ProbeMethod, RangeSupport, RedactMode, Timestamp, codes};
         let range = request
             .resume
             .as_ref()
@@ -144,9 +142,10 @@ impl Prober for HttpProber {
             .resume
             .as_ref()
             .and_then(|r| r.bound_validators.if_range_value());
-        let (response, resolved_url, redirects) = send_following(
+        let probe_url = request.hint_url.clone().unwrap_or(request.url);
+        let initial = send_following(
             &self.transport,
-            request.hint_url.clone().unwrap_or(request.url),
+            probe_url.clone(),
             &request.extra_headers,
             request.session.as_ref(),
             Some(&range),
@@ -155,7 +154,36 @@ impl Prober for HttpProber {
             request.idle_timeout,
             cancel,
         )
-        .await?;
+        .await;
+        // Some download gateways reject Range outright instead of ignoring it.
+        // Retry a fresh probe once as an ordinary GET; never downgrade a resume,
+        // an authentication refusal, or a valid empty-resource response.
+        let stream_fallback = request.resume.is_none()
+            && match &initial {
+                Ok((response, _, _)) => {
+                    response.status.as_u16() == 416
+                        && value(&response.headers, "content-range").as_deref() != Some("bytes */0")
+                }
+                Err(HttpError::Classified(error)) => error.code.as_str() == "http.status_400",
+                _ => false,
+            };
+        let (response, resolved_url, redirects) = if stream_fallback {
+            drop(initial);
+            send_following(
+                &self.transport,
+                probe_url,
+                &request.extra_headers,
+                request.session.as_ref(),
+                None,
+                None,
+                request.head_timeout,
+                request.idle_timeout,
+                cancel,
+            )
+            .await?
+        } else {
+            initial?
+        };
         let status = response.status.as_u16();
         let seen = validators(&response.headers);
         let mut body_offset = 0;
@@ -209,27 +237,14 @@ impl Prober for HttpProber {
         } else {
             return Err(HttpError::Invalid("unexpected probe response"));
         };
-        let disposition = value(&response.headers, "content-disposition")
-            .and_then(|v| crate::parse::parse_content_disposition(&v).ok().flatten());
-        let filename = match disposition {
-            Some(d) => ResolvedFilename {
-                value: d.filename,
-                source: FilenameSource::ContentDisposition,
-            },
-            None => ResolvedFilename {
-                value: resolved_url
-                    .url()
-                    .path_segments()
-                    .and_then(|mut p| p.next_back())
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or("download")
-                    .to_owned(),
-                source: FilenameSource::UrlPath,
-            },
-        };
+        let filename = response_filename(&resolved_url, &response.headers);
         let result = ProbeResult {
             probed_at: Timestamp::now(),
-            method: ProbeMethod::RangeGet,
+            method: if stream_fallback {
+                ProbeMethod::GetStream
+            } else {
+                ProbeMethod::RangeGet
+            },
             transport: zeus_types::Transport::Direct,
             http_version: Some(if response.version == http::Version::HTTP_2 {
                 HttpVersion::H2
@@ -262,9 +277,123 @@ impl Prober for HttpProber {
     }
 }
 
+// These names remain untrusted: the engine sanitizes them before reserving a path.
+// A URL such as /download.php?id=123 is not the document's filename. Use the
+// response metadata, including the final redirect URL, without guessing an
+// executable suffix or overwriting a person-supplied filename.
+fn response_filename(
+    url: &zeus_types::HttpUrl,
+    headers: &http::HeaderMap,
+) -> zeus_types::ResolvedFilename {
+    use zeus_types::{ResolvedFilename, job::FilenameSource};
+    let disposition = crate::response::value(headers, "content-disposition")
+        .and_then(|v| crate::parse::parse_content_disposition(&v).ok().flatten());
+    let (mut name, mut source) = match disposition {
+        Some(d) => (d.filename, FilenameSource::ContentDisposition),
+        None => {
+            let segment = url
+                .url()
+                .path_segments()
+                .and_then(|mut p| p.next_back())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("download");
+            (
+                percent_encoding::percent_decode_str(segment)
+                    .decode_utf8_lossy()
+                    .into_owned(),
+                FilenameSource::UrlPath,
+            )
+        }
+    };
+    let mime = crate::response::value(headers, "content-type").unwrap_or_default();
+    let extension = match mime
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "application/pdf" => Some("pdf"),
+        "application/epub+zip" => Some("epub"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Some("docx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Some("xlsx"),
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Some("pptx"),
+        "text/plain" => Some("txt"),
+        "text/csv" => Some("csv"),
+        _ => None,
+    };
+    let current = std::path::Path::new(&name)
+        .extension()
+        .and_then(|v| v.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if let Some(ext) = extension {
+        let script = source == FilenameSource::UrlPath
+            && matches!(current.as_str(), "php" | "aspx" | "asp" | "jsp" | "cgi");
+        if current.is_empty() || script {
+            if script {
+                name.truncate(name.len() - current.len() - 1);
+            }
+            name.push('.');
+            name.push_str(ext);
+            if source == FilenameSource::UrlPath {
+                source = FilenameSource::ContentTypeDefault;
+            }
+        }
+    }
+    ResolvedFilename {
+        value: name,
+        source,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_names_follow_response_metadata() {
+        for (path, disposition, mime, expected) in [
+            ("/download", None, "application/pdf", "download.pdf"),
+            (
+                "/get.php?id=42",
+                None,
+                "Application/PDF; charset=binary",
+                "get.pdf",
+            ),
+            (
+                "/Quarterly%20Report.pdf",
+                None,
+                "application/pdf",
+                "Quarterly Report.pdf",
+            ),
+            (
+                "/opaque",
+                Some("attachment; filename=paper.pdf"),
+                "application/octet-stream",
+                "paper.pdf",
+            ),
+            (
+                "/opaque",
+                Some("attachment; filename=paper"),
+                "application/pdf",
+                "paper.pdf",
+            ),
+            ("/archive.zip", None, "application/pdf", "archive.zip"),
+            ("/opaque", None, "application/octet-stream", "opaque"),
+            ("/opaque", None, "application/x-msdownload", "opaque"),
+            ("/", None, "application/pdf", "download.pdf"),
+        ] {
+            let mut headers = http::HeaderMap::new();
+            headers.insert("content-type", mime.parse().unwrap());
+            if let Some(value) = disposition {
+                headers.insert("content-disposition", value.parse().unwrap());
+            }
+            let url = zeus_types::HttpUrl::parse(&format!("https://files.example{path}")).unwrap();
+            assert_eq!(response_filename(&url, &headers).value, expected, "{path}");
+        }
+    }
 
     #[test]
     fn the_prober_trait_is_object_safe() {

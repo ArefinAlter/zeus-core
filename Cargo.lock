@@ -3052,6 +3052,7 @@ dependencies = [
  "percent-encoding",
  "proptest",
  "reqwest",
+ "rustls",
  "serde_json",
  "thiserror",
  "tokio",

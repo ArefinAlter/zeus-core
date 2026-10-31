@@ -6,7 +6,7 @@
 //! session provider and in-browser fetch, the consent store, the audit sink and the approvals port. With
 //! deterministic fakes for all of them the whole job pipeline runs under a simulated clock.
 //!
-//! Pipeline per job (01 section 6): `queued` -> `probing` (resume validation, session lease) ->
+//! Pipeline per job (01 section 6): `queued` -> `probing` (resume validation, browser session) ->
 //! `downloading` (segment plan, AIMD, work stealing, per-host token bucket, weighted fair queue; bytes
 //! flow through the writer and the committer of 03) -> `verifying` (hash from disk, content check,
 //! quarantine) -> `finalizing` (OS marks, fsync, atomic rename, completion commit) -> `completed`, with
@@ -2154,63 +2154,37 @@ impl Engine {
             }
             None => self.inner.transport.clone(),
         };
-        let mut browser_proxy = spec.transport_hint() == TransportHint::BrowserProxy;
-        let mut session = if browser_proxy {
+        // Session-authenticated jobs always stay inside the browser.  A legacy
+        // SessionProvider is never asked for raw browser credentials.
+        let browser_proxy =
+            spec.transport_hint() == TransportHint::BrowserProxy || spec.session_origin.is_some();
+        if browser_proxy && spec.source.kind == SourceKind::Workflow {
+            return Err(rejected(
+                codes::POLICY_APPROVAL_DENIED,
+                "browser sessions are unavailable to workflow jobs without an enforcing browser transport",
+            ));
+        }
+        if browser_proxy {
             match self.browser_transport(id)? {
-                Some(proxy) => {
-                    transport = proxy;
-                    None
-                }
+                Some(proxy) => transport = proxy,
                 None => return Ok(()),
             }
-        } else {
-            self.session_binding(id, cancel).await?
-        };
-        if self.record(id)?.job.state == JobState::AwaitingSession {
-            return Ok(());
         }
         transport = self.bounded_transport(transport);
+        let session: Option<zeus_http::SessionBinding> = None;
         let request = ProbeRequest {
             url: spec.url.clone(),
             hint_url: spec.hint_url.clone(),
             referrer: spec.referrer.clone(),
             extra_headers: spec.extra_headers.clone(),
-            session: session.clone(),
+            session: None,
             resume: None,
             head_timeout: self.inner.config.timeouts.probe,
             idle_timeout: self.inner.config.timeouts.read,
         };
-        let attempted = HttpProber::new(transport.clone())
-            .probe(request.clone(), cancel)
-            .await;
-        let mut probe = match attempted {
-            Err(error)
-                if error
-                    .envelope()
-                    .is_some_and(|e| e.class == ErrorClass::Blocked)
-                    && spec.transport_hint() == TransportHint::Auto
-                    && spec.source.kind != SourceKind::Workflow
-                    && spec.session_origin.is_some()
-                    && self.inner.proxy.is_some() =>
-            {
-                let Some(proxy) = self.browser_transport(id)? else {
-                    return Ok(());
-                };
-                transport = self.bounded_transport(proxy);
-                session = None;
-                browser_proxy = true;
-                HttpProber::new(transport.clone())
-                    .probe(
-                        ProbeRequest {
-                            session: None,
-                            ..request
-                        },
-                        cancel,
-                    )
-                    .await?
-            }
-            result => result?,
-        };
+        let mut probe = HttpProber::new(transport.clone())
+            .probe(request, cancel)
+            .await?;
         if browser_proxy {
             probe.result.transport = Transport::BrowserProxy;
         }
@@ -2360,96 +2334,97 @@ impl Engine {
                 let mut buffer =
                     Vec::with_capacity(self.inner.config.commit.commit_unit_bytes as usize);
                 let mut offset = 0u64;
-            loop {
-                if session.as_ref().is_some_and(|b| {
-                    b.material.issued_at.saturating_add_ms(b.material.ttl_ms)
-                        <= self.inner.clock.now()
-                }) {
-                    return Err(rejected(
-                        codes::HTTP_FORBIDDEN_SESSION,
-                        "session lease expired during transfer",
-                    ));
-                }
-                let next = tokio::select! { biased; _ = cancel.cancelled() => return Err(HttpError::Canceled.into()), chunk = body.next() => chunk };
-                let Some(chunk) = next else {
-                    break;
-                };
-                let chunk = chunk.map_err(|e| {
-                    EngineError::Rejected(
-                        zeus_http::classify_transport(e.kind).envelope("download stream failed"),
-                    )
-                })?;
-                if probe
-                    .result
-                    .total_bytes
-                    .is_some_and(|t| offset + buffer.len() as u64 + chunk.len() as u64 > t)
-                {
-                    return Err(rejected(
-                        codes::INTEGRITY_RANGE_OVERRUN,
-                        "stream exceeds declared size",
-                    ));
-                }
-                for mut part in chunk.chunks(64 * 1024) {
-                    while !part.is_empty() {
-                        let count = part.len().min(
-                            self.inner.config.commit.commit_unit_bytes as usize - buffer.len(),
-                        );
-                        buffer.extend_from_slice(&part[..count]);
-                        part = &part[count..];
-                        if buffer.len() as u64 == self.inner.config.commit.commit_unit_bytes {
-                            self.write_unit(
-                                file.clone(),
-                                id,
-                                record.internal.epoch,
-                                offset,
-                                std::mem::take(&mut buffer),
-                            )
-                            .await?;
-                            offset += self.inner.config.commit.commit_unit_bytes;
+                loop {
+                    if session.as_ref().is_some_and(|b| {
+                        b.material.issued_at.saturating_add_ms(b.material.ttl_ms)
+                            <= self.inner.clock.now()
+                    }) {
+                        return Err(rejected(
+                            codes::HTTP_FORBIDDEN_SESSION,
+                            "session lease expired during transfer",
+                        ));
+                    }
+                    let next = tokio::select! { biased; _ = cancel.cancelled() => return Err(HttpError::Canceled.into()), chunk = body.next() => chunk };
+                    let Some(chunk) = next else {
+                        break;
+                    };
+                    let chunk = chunk.map_err(|e| {
+                        EngineError::Rejected(
+                            zeus_http::classify_transport(e.kind)
+                                .envelope("download stream failed"),
+                        )
+                    })?;
+                    if probe
+                        .result
+                        .total_bytes
+                        .is_some_and(|t| offset + buffer.len() as u64 + chunk.len() as u64 > t)
+                    {
+                        return Err(rejected(
+                            codes::INTEGRITY_RANGE_OVERRUN,
+                            "stream exceeds declared size",
+                        ));
+                    }
+                    for mut part in chunk.chunks(64 * 1024) {
+                        while !part.is_empty() {
+                            let count = part.len().min(
+                                self.inner.config.commit.commit_unit_bytes as usize - buffer.len(),
+                            );
+                            buffer.extend_from_slice(&part[..count]);
+                            part = &part[count..];
+                            if buffer.len() as u64 == self.inner.config.commit.commit_unit_bytes {
+                                self.write_unit(
+                                    file.clone(),
+                                    id,
+                                    record.internal.epoch,
+                                    offset,
+                                    std::mem::take(&mut buffer),
+                                )
+                                .await?;
+                                offset += self.inner.config.commit.commit_unit_bytes;
+                            }
                         }
                     }
                 }
-            }
-            if !buffer.is_empty() {
-                let len = buffer.len() as u64;
-                self.write_unit(file.clone(), id, record.internal.epoch, offset, buffer)
-                    .await?;
-                offset += len;
-            }
-            if probe.result.total_bytes.is_some_and(|t| t != offset) {
+                if !buffer.is_empty() {
+                    let len = buffer.len() as u64;
+                    self.write_unit(file.clone(), id, record.internal.epoch, offset, buffer)
+                        .await?;
+                    offset += len;
+                }
+                if probe.result.total_bytes.is_some_and(|t| t != offset) {
+                    return Err(rejected(
+                        codes::NET_PREMATURE_EOF,
+                        "stream ended before declared size",
+                    ));
+                }
+                if self.record(id)?.job.state == JobState::Downloading {
+                    self.inner.journal.transact(|t| {
+                        let mut r = t
+                            .job(id)?
+                            .ok_or(zeus_journal::JournalError::Invariant("missing job"))?;
+                        r.internal.total_bytes = Some(offset);
+                        r.internal.eof_size = Some(offset);
+                        r.internal.data_complete = true;
+                        r.job.progress.bytes_total = Some(offset);
+                        t.put_job(&r)
+                    })?;
+                    self.transition(
+                        id,
+                        "S20",
+                        TransitionActor::Engine,
+                        StateCause::AllCommitted,
+                        vec![],
+                        vec![],
+                        |_| Ok(()),
+                    )?;
+                }
+            } else {
                 return Err(rejected(
-                    codes::NET_PREMATURE_EOF,
-                    "stream ended before declared size",
+                    codes::HTTP_PROTOCOL_ERROR,
+                    "resource has no usable download stream",
                 ));
             }
-            if self.record(id)?.job.state == JobState::Downloading {
-                self.inner.journal.transact(|t| {
-                    let mut r = t
-                        .job(id)?
-                        .ok_or(zeus_journal::JournalError::Invariant("missing job"))?;
-                    r.internal.total_bytes = Some(offset);
-                    r.internal.eof_size = Some(offset);
-                    r.internal.data_complete = true;
-                    r.job.progress.bytes_total = Some(offset);
-                    t.put_job(&r)
-                })?;
-                self.transition(
-                    id,
-                    "S20",
-                    TransitionActor::Engine,
-                    StateCause::AllCommitted,
-                    vec![],
-                    vec![],
-                    |_| Ok(()),
-                )?;
-            }
-        } else {
-            return Err(rejected(
-                codes::HTTP_PROTOCOL_ERROR,
-                "resource has no usable download stream",
-            ));
         }
-    }
         if cancel.is_cancelled() {
             return Err(HttpError::Canceled.into());
         }
@@ -2833,8 +2808,8 @@ impl Engine {
                     },
                 )?;
             } else if !self.inner.journal.meta()?.kill_switch_engaged()
-                && self.inner.session.as_ref().is_some_and(|p| {
-                    p.extension_connected(
+                && self.inner.proxy.as_ref().is_some_and(|p| {
+                    p.available(
                         record
                             .job
                             .spec
@@ -2868,15 +2843,15 @@ impl Engine {
             )
         })?;
         self.ensure_running()?;
-        if !matches!(
-            self.effective_grant(&origin, Some(id), record.job.spec.source.run_id)?,
-            zeus_session::consent::Resolution::Allowed(_)
-        ) {
-            return Err(rejected(
-                codes::POLICY_APPROVAL_DENIED,
-                "browser transport grant is not effective",
-            ));
-        }
+        let grant = match self.effective_grant(&origin, Some(id), record.job.spec.source.run_id)? {
+            zeus_session::consent::Resolution::Allowed(grant) => grant,
+            _ => {
+                return Err(rejected(
+                    codes::POLICY_APPROVAL_DENIED,
+                    "browser transport grant is not effective",
+                ));
+            }
+        };
         let profile = record
             .job
             .spec
@@ -2893,53 +2868,16 @@ impl Engine {
             self.await_session(id, &origin)?;
             return Ok(None);
         };
-        Ok(Some(Arc::new(crate::proxy::BrowserTransport {
-            provider: provider.clone(),
-            job_id: id,
-            origin,
-            profile_id: profile,
-        })))
-    }
-    async fn session_binding(
-        &self,
-        id: JobId,
-        cancel: &CancellationToken,
-    ) -> EngineResult<Option<zeus_http::SessionBinding>> {
-        let record = self.record(id)?;
-        let Some(origin) = record.job.spec.session_origin.clone() else {
-            return Ok(None);
-        };
-        self.ensure_running()?;
-        let grant = match self.effective_grant(&origin, Some(id), record.job.spec.source.run_id)? {
-            zeus_session::consent::Resolution::Allowed(g) => g,
-            _ => {
-                return Err(rejected(
-                    codes::POLICY_APPROVAL_DENIED,
-                    "session requires an effective grant",
-                ));
-            }
-        };
-        let browser = record.job.spec.source.browser.as_ref();
-        let profile = browser.and_then(|b| b.profile_id.clone());
-        let provider = self
-            .inner
-            .session
-            .as_ref()
-            .filter(|p| p.extension_connected(profile.as_deref()));
-        let Some(provider) = provider else {
-            self.await_session(id, &origin)?;
-            return Ok(None);
-        };
         let audit = self.inner.audit.as_ref().ok_or_else(|| {
             rejected(
                 codes::AUDIT_UNAVAILABLE,
-                "session lease requires a durable audit sink",
+                "browser transport requires a durable audit sink",
             )
         })?;
         let mut entry = zeus_verify::AuditEntry::new(
             self.inner.clock.now(),
             Actor::engine(),
-            zeus_verify::audit::actions::SESSION_LEASE_REQUESTED,
+            zeus_verify::audit::actions::SESSION_PROXY_REQUESTED,
             zeus_verify::AuditOutcome::Ok,
         );
         entry.subject = zeus_verify::AuditSubject {
@@ -2949,80 +2887,21 @@ impl Engine {
             ..Default::default()
         };
         audit.append(entry)?;
-        let requested = zeus_session::provider::LeaseRequest {
-            job_id: id,
-            grant_id: grant.id,
-            origin: origin.clone(),
-            url: record.job.spec.url.clone(),
-            purpose: LeasePurpose::Download,
-            request_headers: vec![],
-            ttl: Duration::from_secs(900),
-            incognito: browser.is_some_and(|b| b.incognito),
-            profile_id: profile,
-        };
-        let lease = tokio::select! {biased;_=cancel.cancelled()=>return Err(HttpError::Canceled.into()),r=tokio::time::timeout(self.inner.config.timeouts.lease_wait,provider.lease(requested))=>match r {Ok(Ok(lease))=>lease,Ok(Err(zeus_session::SessionError::ExtensionUnavailable))|Err(_)=>{self.await_session(id,&origin)?;return Ok(None)},Ok(Err(e))=>return Err(e.into())}};
-        if lease.is_expired(self.inner.clock.as_ref())
-            || lease.material.origin != origin
-            || lease.ttl > Duration::from_secs(900)
-            || lease.material.ttl_ms > 900_000
-            || lease.material.cookies.len() > 150
-        {
-            return Err(rejected(
-                codes::HTTP_FORBIDDEN_SESSION,
-                "session provider returned an invalid lease",
-            ));
-        }
         self.ensure_running()?;
-        if !matches!(self.effective_grant(&origin,Some(id),record.job.spec.source.run_id)?,zeus_session::consent::Resolution::Allowed(g) if g.id==grant.id)
+        if !matches!(self.effective_grant(&origin, Some(id), record.job.spec.source.run_id)?,
+            zeus_session::consent::Resolution::Allowed(current) if current.id == grant.id)
         {
             return Err(rejected(
                 codes::POLICY_APPROVAL_DENIED,
-                "grant changed while requesting the lease",
+                "grant changed before browser request",
             ));
         }
-        let material_bytes = lease
-            .material
-            .cookies
-            .iter()
-            .map(|c| c.name.len() + c.value.expose().len() + c.domain.len() + c.path.len() + 128)
-            .sum::<usize>()
-            + lease.material.user_agent.len()
-            + lease
-                .material
-                .headers
-                .values()
-                .map(String::len)
-                .sum::<usize>();
-        if material_bytes > 128 * 1024
-            || lease
-                .material
-                .cookies
-                .iter()
-                .any(|c| c.name.len() > 256 || c.value.expose().len() > 8192)
-            || lease.material.issued_at > self.inner.clock.now().saturating_add_ms(1000)
-            || lease
-                .material
-                .issued_at
-                .saturating_add_ms(lease.material.ttl_ms)
-                <= self.inner.clock.now()
-        {
-            return Err(rejected(
-                codes::HTTP_FORBIDDEN_SESSION,
-                "session material is oversized or expired",
-            ));
-        }
-        self.inner.journal.transact(|t| {
-            if let Some(mut g) = t.grant(grant.id)? {
-                g.uses = g.uses.saturating_add(1);
-                g.last_used_at = Some(self.inner.clock.now());
-                t.put_grant(&g)?;
-            }
-            Ok(())
-        })?;
-        Ok(Some(zeus_http::SessionBinding {
+        Ok(Some(Arc::new(crate::proxy::BrowserTransport {
+            provider: provider.clone(),
+            job_id: id,
             origin,
-            material: lease.material,
-        }))
+            profile_id: profile,
+        })))
     }
     fn await_session(&self, id: JobId, origin: &Origin) -> EngineResult<()> {
         let deadline = self

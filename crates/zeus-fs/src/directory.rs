@@ -492,8 +492,28 @@ impl DirectoryCap {
 
     /// Open and retain the item which a subsequent no-replace rename must move.
     pub fn prepare_rename(&self, name: &OsStr) -> FsResult<RenameSource> {
+        // An index reader briefly holds a non-delete-shared directory handle. Retry only the
+        // Windows sharing violation while acquiring authority, never the mutation itself. The
+        // parent stays pinned, every attempt refuses links, and callers still verify identity.
+        #[cfg(windows)]
+        let file = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+            loop {
+                match self.open(name, false, false, true, true) {
+                    Err(FsError::Io { ref source, .. })
+                        if source.raw_os_error() == Some(32)
+                            && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    result => break result?,
+                }
+            }
+        };
+        #[cfg(not(windows))]
+        let file = self.open(name, false, false, true, true)?;
         Ok(RenameSource {
-            file: self.open(name, false, false, true, true)?,
+            file,
             _parent: self.clone(),
             #[cfg(not(windows))]
             name: name.to_owned(),
@@ -816,6 +836,37 @@ mod tests {
                 b"foreign"
             );
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rename_waits_for_brief_index_read_without_weakening_retained_handles() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = DirectoryCap::open_root(temp.path()).unwrap();
+        let scan = root.create_dir_all(Path::new("scanned")).unwrap();
+        scan.create_new(os("file"))
+            .unwrap()
+            .write_all(b"unchanged")
+            .unwrap();
+        let identity = scan.file_id().unwrap();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(80));
+                drop(scan);
+            });
+            let source = root.prepare_rename(os("scanned")).unwrap();
+            assert_eq!(source.metadata().unwrap().file_id, Some(identity.clone()));
+            source.rename_noreplace(&root, os("renamed")).unwrap();
+        });
+        assert_eq!(
+            std::fs::read(temp.path().join("renamed/file")).unwrap(),
+            b"unchanged"
+        );
+        let held = root.open_dir(Path::new("renamed")).unwrap();
+        // A lasting reader still prevents acquisition and mutation; no delete-sharing relaxation.
+        assert!(root.prepare_rename(os("renamed")).is_err());
+        assert_eq!(held.file_id().unwrap(), identity);
+        assert!(!temp.path().join("scanned").exists());
     }
 
     #[cfg(windows)]

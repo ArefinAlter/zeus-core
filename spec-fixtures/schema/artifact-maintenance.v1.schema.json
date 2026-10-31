@@ -1,0 +1,557 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeus.invalid/schema/artifact-maintenance.v1",
+  "title": "Zeus artifact maintenance v1",
+  "description": "Exact reviewed bounded bundles, collection, integrity/repair and scoped audit replay. Never grants approval authority.",
+  "$defs": {
+    "ArtifactFileBinding": {
+      "additionalProperties": false,
+      "description": "Retained filesystem identities bound to a preview, reopened and compared before execution.",
+      "properties": {
+        "file_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source identity; null for a new destination."
+        },
+        "parent_id": {
+          "$ref": "#/$defs/FileId",
+          "description": "Existing parent directory identity."
+        },
+        "path": {
+          "description": "Exact absolute filename.",
+          "type": "string"
+        },
+        "root": {
+          "description": "Authorized configured root.",
+          "type": "string"
+        },
+        "root_id": {
+          "$ref": "#/$defs/FileId",
+          "description": "Root identity."
+        }
+      },
+      "required": [
+        "path",
+        "root",
+        "root_id",
+        "parent_id"
+      ],
+      "type": "object"
+    },
+    "ArtifactMaintenanceOperation": {
+      "description": "Bounded artifact maintenance; none of these operations authorizes another operation or a provider.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Verify exact stored objects and move mismatches into private damaged storage after human approval.",
+          "properties": {
+            "artifact_ids": {
+              "description": "1–64 visible active records;32MiB total observed bytes.",
+              "items": {
+                "description": "Identifier with the prefix `art_` followed by a 26 character ULID.",
+                "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "scrub",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Restore an absent/damaged object from exact verified bytes; requires a human decision.",
+          "properties": {
+            "artifact_id": {
+              "description": "Visible active record whose immutable content is restored.",
+              "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+              "type": "string"
+            },
+            "kind": {
+              "const": "repair",
+              "type": "string"
+            },
+            "path": {
+              "description": "Existing source within a permitted root; at most16MiB.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_id",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Export up to64 visible active records to a new bundle file; optional verified content is bounded.",
+          "properties": {
+            "artifact_ids": {
+              "description": "Exact records.",
+              "items": {
+                "description": "Identifier with the prefix `art_` followed by a 26 character ULID.",
+                "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "include_objects": {
+              "default": false,
+              "description": "Include present content; quarantined byte export is refused.",
+              "type": "boolean"
+            },
+            "kind": {
+              "const": "export",
+              "type": "string"
+            },
+            "path": {
+              "description": "New absolute destination inside an authorized root.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_ids",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Import a validated bundle. Existing immutable source identities replay without overwrite.",
+          "properties": {
+            "kind": {
+              "const": "import",
+              "type": "string"
+            },
+            "path": {
+              "description": "Existing regular bundle inside an authorized root.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Select exact unprotected CAS objects. Requires non-service owner access and human approval.",
+          "properties": {
+            "kind": {
+              "const": "collect",
+              "type": "string"
+            },
+            "limit": {
+              "description": "1–128 exact targets.",
+              "minimum": 0,
+              "type": "integer",
+              "maximum": 4294967295
+            },
+            "quota_pressure": {
+              "default": false,
+              "description": "Permit evictable active content as well as unreferenced content.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "limit"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ArtifactMaintenancePlan": {
+      "additionalProperties": false,
+      "description": "Exact versioned plan. Details contain bounded core bundle or collection facts, never authority.",
+      "properties": {
+        "details": {
+          "description": "Exact content manifest/record revisions or collection targets."
+        },
+        "expires_at": {
+          "description": "No more than15minutes after preview.",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)\\.[0-9]{3}Z$",
+          "type": "string"
+        },
+        "file": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactFileBinding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source or destination binding; collection has no user-file target."
+        },
+        "operation": {
+          "$ref": "#/$defs/ArtifactMaintenanceOperation",
+          "description": "Complete requested effect."
+        },
+        "requires_approval": {
+          "description": "Always true for collection; callers cannot downgrade it.",
+          "type": "boolean"
+        },
+        "store_id": {
+          "description": "Local store identity.",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "store_root_id": {
+          "$ref": "#/$defs/FileId",
+          "description": "Local store directory identity."
+        },
+        "version": {
+          "description": "Plan format1.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "version",
+        "store_id",
+        "store_root_id",
+        "operation",
+        "details",
+        "requires_approval",
+        "expires_at"
+      ],
+      "type": "object"
+    },
+    "ArtifactsEventsParams": {
+      "additionalProperties": false,
+      "description": "Replay the oldest retained artifact audit events after a sequence; no event subscription is implied.",
+      "properties": {
+        "after_seq": {
+          "default": 0,
+          "description": "Last consumed sequence,0 to start.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 9007199254740991
+        },
+        "chain_id": {
+          "default": null,
+          "description": "Expected audit chain; a different chain requires a resync.",
+          "pattern": "^chain_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "description": "1–100 events, default20.",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "maximum": 4294967295
+        }
+      },
+      "type": "object"
+    },
+    "ArtifactsEventsResult": {
+      "description": "Privacy-reduced artifact events retain chain pointers and explicit intent/completion semantics.",
+      "properties": {
+        "earliest_seq": {
+          "description": "First retained audit sequence; older records may have been rotated out.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 9007199254740991
+        },
+        "events": {
+          "description": "Only visible artifact facts; not complete records.",
+          "items": true,
+          "type": "array"
+        },
+        "has_more": {
+          "description": "More matching events were retained.",
+          "type": "boolean"
+        },
+        "head": {
+          "$ref": "#/$defs/AuditHead",
+          "description": "Consistent chain head."
+        },
+        "history_truncated": {
+          "description": "The requested cursor predates retained history; refresh records before relying on replay.",
+          "type": "boolean"
+        },
+        "next_seq": {
+          "description": "Continue here, without dropping older matching events.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 9007199254740991
+        },
+        "store_format_version": {
+          "description": "Current implemented format; no migration is needed for this feature.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "earliest_seq",
+        "history_truncated",
+        "events",
+        "next_seq",
+        "has_more",
+        "head",
+        "store_format_version"
+      ],
+      "type": "object"
+    },
+    "ArtifactsMaintenanceApplyParams": {
+      "additionalProperties": false,
+      "description": "Execute or request approval for one exact saved plan.",
+      "properties": {
+        "idempotency_key": {
+          "description": "Owner-scoped retry key,1–128 printable bytes.",
+          "type": "string"
+        },
+        "plan": {
+          "$ref": "#/$defs/ArtifactMaintenancePlan",
+          "description": "Exact plan."
+        },
+        "plan_hash": {
+          "description": "Preview hash.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "plan_hash",
+        "idempotency_key"
+      ],
+      "type": "object"
+    },
+    "ArtifactsMaintenanceApplyResult": {
+      "description": "Durable result or a pending human decision; never an implied grant.",
+      "properties": {
+        "absent_objects": {
+          "description": "Known absent exact targets; not proof of which process removed them.",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "maximum": 4294967295
+        },
+        "applied": {
+          "description": "Effect is complete.",
+          "type": "boolean"
+        },
+        "approval_id": {
+          "description": "Exact human approval if needed.",
+          "pattern": "^ap_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact_ids": {
+          "description": "Local records after an import.",
+          "items": {
+            "description": "Identifier with the prefix `art_` followed by a 26 character ULID.",
+            "pattern": "^art_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "damaged_objects": {
+          "description": "Content marked damaged and retained privately by an integrity check.",
+          "items": {
+            "description": "Lowercase hex of a 32-byte digest (SHA-256 or BLAKE3).",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "error_code": {
+          "description": "Stable error code on an interrupted operation; no private path/error text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reconciliation_required": {
+          "description": "An export may have published before its receipt: inspect it; never adopt a file as success.",
+          "type": "boolean"
+        },
+        "remaining_objects": {
+          "description": "Exact targets still not known absent.",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "maximum": 4294967295
+        },
+        "replayed": {
+          "description": "Existing durable result/pending request.",
+          "type": "boolean"
+        },
+        "size_bytes": {
+          "description": "Bytes in the reviewed export or collection.",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 9007199254740991
+        },
+        "status": {
+          "description": "completed, awaiting_approval, interrupted, or cancelled_before_start.",
+          "type": "string"
+        },
+        "verified_objects": {
+          "description": "Content verified by an integrity check.",
+          "items": {
+            "description": "Lowercase hex of a 32-byte digest (SHA-256 or BLAKE3).",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "verified_objects",
+        "damaged_objects",
+        "status",
+        "reconciliation_required",
+        "applied",
+        "artifact_ids",
+        "size_bytes",
+        "replayed"
+      ],
+      "type": "object"
+    },
+    "ArtifactsMaintenancePreviewParams": {
+      "additionalProperties": false,
+      "description": "Read-only maintenance preview parameters.",
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/ArtifactMaintenanceOperation",
+          "description": "Requested operation."
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "type": "object"
+    },
+    "ArtifactsMaintenancePreviewResult": {
+      "additionalProperties": false,
+      "description": "Save this complete preview for a later explicit apply.",
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/ArtifactMaintenancePlan",
+          "description": "Exact plan."
+        },
+        "plan_hash": {
+          "description": "BLAKE3 of canonical tagged plan.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "plan_hash"
+      ],
+      "type": "object"
+    },
+    "AuditHead": {
+      "description": "The newest record of an audit chain: `(chain_id, seq, hash)` (04 section 2, \"Head\").",
+      "properties": {
+        "chain_id": {
+          "description": "Which chain.",
+          "pattern": "^chain_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        "hash": {
+          "description": "Its hash (BLAKE3 over `prev_hash || canonical record`).",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Sequence number of the newest record (1 or more).",
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "chain_id",
+        "seq",
+        "hash"
+      ],
+      "type": "object"
+    },
+    "FileId": {
+      "description": "Stable identity of an open file object, used to detect a replaced or swapped `.zpart`\n(03 sections 3.1 and 7.2, checks L1 and L2). Numbers are decimal or hexadecimal *strings*\nbecause inode numbers and 128-bit file indexes exceed the 2^53 JSON integer limit.",
+      "oneOf": [
+        {
+          "description": "Unix: device and inode, decimal.",
+          "properties": {
+            "dev": {
+              "description": "`st_dev`.",
+              "type": "string"
+            },
+            "ino": {
+              "description": "`st_ino`.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "unix",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "dev",
+            "ino"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Windows: 64-bit volume serial (16 lowercase hex digits) and 128-bit file index (32 hex digits).",
+          "properties": {
+            "file_index": {
+              "description": "`FILE_ID_128`.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "windows",
+              "type": "string"
+            },
+            "volume_serial": {
+              "description": "Volume serial number.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "volume_serial",
+            "file_index"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  }
+}

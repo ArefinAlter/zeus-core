@@ -102,9 +102,9 @@ impl Engine {
                 .copied()
                 .unwrap_or_else(|| {
                     if total >= 8 << 20 {
-                        limit.min(8).max(4)
+                        limit.clamp(4, 8)
                     } else if total >= 2 << 20 {
-                        limit.min(4).max(2)
+                        limit.clamp(2, 4)
                     } else {
                         2
                     }

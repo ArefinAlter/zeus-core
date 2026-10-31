@@ -57,6 +57,7 @@ pub mod actions {
         GRANT_REVOKED = "grant.revoked", true;
         GRANT_EXPIRED = "grant.expired", false;
         SESSION_LEASE_REQUESTED = "session.lease_requested", true;
+        SESSION_PROXY_REQUESTED = "session.proxy_requested", true;
         SESSION_LEASED = "session.leased", false;
         SESSION_DENIED = "session.denied", false;
         JOB_CREATED = "job.created", false;
@@ -1041,6 +1042,7 @@ mod tests {
     #[test]
     fn write_ahead_registry() {
         assert!(actions::is_write_ahead(actions::SESSION_LEASE_REQUESTED));
+        assert!(actions::is_write_ahead(actions::SESSION_PROXY_REQUESTED));
         assert!(actions::is_write_ahead(actions::FILE_DELETED));
         assert!(!actions::is_write_ahead(actions::JOB_CREATED));
         assert!(!actions::is_write_ahead("nonexistent.action"));
