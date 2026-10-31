@@ -9,7 +9,7 @@
     "browser": { "name": "chrome", "version": "141.0.7390.65", "platform": "win" },
     "profile_id": "5e0b1f6d9a2c47e8b3d1f0a7c6e92b41",
     "protocol_versions": [1],
-    "capabilities": ["handoff", "session", "url_refresh.refetch", "url_refresh.download_api", "fetch_proxy", "incognito"],
+    "capabilities": ["handoff", "session", "url_refresh.refetch", "url_refresh.download_api", "fetch_proxy", "incognito", "approvals", "events", "job_control", "grants"],
     "sw_instance_id": "9c1f4a7e52b84d06",
     "resume": { "last_event_seq": 48198 }
   }
